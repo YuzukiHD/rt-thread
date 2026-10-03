@@ -165,6 +165,7 @@ struct musb_ep_state {
     uint8_t *xfer_buf;
     uint32_t xfer_len;
     uint32_t actual_xfer_len;
+    uint32_t dma_len;   /* bytes of the running DMA transfer, 0 when the endpoint is moved by packets */
 };
 
 /* Driver state */
@@ -188,6 +189,136 @@ static void musb_set_active_ep(uint8_t ep_index)
 {
     HWREGB(USB_BASE + MUSB_EPIDX_OFFSET) = ep_index;
 }
+
+static void musb_write_packet(uint8_t ep_idx, uint8_t *buffer, uint16_t len);
+
+#ifdef CONFIG_USB_MUSB_DMA
+/*
+ * Optional DMA engine behind the FIFOs. The glue implements the three hooks; the defaults leave every
+ * endpoint on the CPU. A transfer of whole packets is moved by DMA, the tail and short packets by the CPU.
+ */
+#ifndef CONFIG_USB_MUSB_DMA_MAX
+#define CONFIG_USB_MUSB_DMA_MAX 65536
+#endif
+
+/* start moving @len bytes (a multiple of @mps) between the FIFO of @ep_idx and @buf; false when no channel is free */
+__WEAK bool usb_musb_dma_start(uint8_t ep_idx, bool is_in, void *buf, uint32_t len, uint16_t mps)
+{
+    return false;
+}
+
+/* true once the transfer started by usb_musb_dma_start() has finished (@bytes: how much it moved); the channel is released */
+__WEAK bool usb_musb_dma_done(uint8_t ep_idx, bool is_in, uint32_t *bytes)
+{
+    return false;
+}
+
+/* stop the transfer of the endpoint, returns how much it has moved so far */
+__WEAK uint32_t usb_musb_dma_abort(uint8_t ep_idx, bool is_in)
+{
+    return 0;
+}
+
+static bool musb_tx_dma(uint8_t ep_idx)
+{
+    struct musb_ep_state *ep = &g_musb_udc.in_ep[ep_idx];
+    uint32_t n = MIN(ep->xfer_len, CONFIG_USB_MUSB_DMA_MAX);
+
+    n -= n % ep->ep_mps;
+    if (ep_idx == 0 || n == 0) {
+        return false;
+    }
+    /* the endpoint interrupt is not used while the DMA runs, the end of the transfer comes from the DMA */
+    HWREGH(USB_BASE + MUSB_TXIE_OFFSET) &= ~(1 << ep_idx);
+    HWREGH(USB_BASE + MUSB_TXIS_OFFSET) = (1 << ep_idx);
+    HWREGB(USB_TXCSRH_BASE(ep_idx)) |= USB_TXCSRH1_AUTOSET | USB_TXCSRH1_DMAEN | USB_TXCSRH1_DMAMOD;
+    if (!usb_musb_dma_start(ep_idx, true, ep->xfer_buf, n, ep->ep_mps)) {
+        HWREGB(USB_TXCSRH_BASE(ep_idx)) &= ~(USB_TXCSRH1_AUTOSET | USB_TXCSRH1_DMAEN | USB_TXCSRH1_DMAMOD);
+        return false;
+    }
+    ep->dma_len = n;
+
+    return true;
+}
+
+/* a packet of @count bytes is in the FIFO: move this one and the following full packets by DMA */
+static bool musb_rx_dma(uint8_t ep_idx, uint16_t count)
+{
+    struct musb_ep_state *ep = &g_musb_udc.out_ep[ep_idx];
+    uint32_t n = MIN(ep->xfer_len, CONFIG_USB_MUSB_DMA_MAX);
+
+    n -= n % ep->ep_mps;
+    if (ep_idx == 0 || count < ep->ep_mps || n == 0) {
+        return false;
+    }
+    /*
+     * The receive interrupt stays enabled: the controller releases the full packets by itself, a short
+     * packet stays in the FIFO and ends the transfer in the interrupt.
+     */
+    HWREGH(USB_BASE + MUSB_RXIS_OFFSET) = (1 << ep_idx);
+    HWREGB(USB_RXCSRH_BASE(ep_idx)) |= USB_RXCSRH1_DMAMOD;
+    HWREGB(USB_RXCSRH_BASE(ep_idx)) |= USB_RXCSRH1_AUTOCL | USB_RXCSRH1_DMAEN;
+    HWREGB(USB_RXCSRH_BASE(ep_idx)) &= ~USB_RXCSRH1_DMAMOD;
+    HWREGB(USB_RXCSRH_BASE(ep_idx)) |= USB_RXCSRH1_DMAMOD;
+    if (!usb_musb_dma_start(ep_idx, false, ep->xfer_buf, n, ep->ep_mps)) {
+        HWREGB(USB_RXCSRH_BASE(ep_idx)) &= ~(USB_RXCSRH1_AUTOCL | USB_RXCSRH1_DMAEN | USB_RXCSRH1_DMAMOD);
+        return false;
+    }
+    ep->dma_len = n;
+
+    return true;
+}
+
+/* the end of the DMA transfers of the endpoints */
+static void musb_dma_complete(void)
+{
+    uint8_t ep_idx;
+
+    for (ep_idx = 1; ep_idx < CONFIG_USB_MUSB_EP_NUM; ep_idx++) {
+        struct musb_ep_state *in = &g_musb_udc.in_ep[ep_idx];
+        struct musb_ep_state *out = &g_musb_udc.out_ep[ep_idx];
+        uint32_t bytes;
+
+        if (in->dma_len && usb_musb_dma_done(ep_idx, true, &bytes)) {
+            uint32_t wait = 100000;
+
+            musb_set_active_ep(ep_idx);
+            /* the last packets are still on their way out of the FIFO */
+            while ((HWREGB(USB_TXCSRL_BASE(ep_idx)) & (USB_TXCSRL1_TXRDY | USB_TXCSRL1_FIFONE)) && --wait) {
+            }
+            HWREGB(USB_TXCSRH_BASE(ep_idx)) &= ~(USB_TXCSRH1_AUTOSET | USB_TXCSRH1_DMAEN | USB_TXCSRH1_DMAMOD);
+            HWREGH(USB_BASE + MUSB_TXIS_OFFSET) = (1 << ep_idx);
+            in->dma_len = 0;
+            in->xfer_buf += bytes;
+            in->actual_xfer_len += bytes;
+            in->xfer_len -= bytes;
+            if (in->xfer_len == 0) {
+                usbd_event_ep_in_complete_handler(0, ep_idx | 0x80, in->actual_xfer_len);
+            } else if (!musb_tx_dma(ep_idx)) {
+                uint16_t write_count = MIN(in->xfer_len, in->ep_mps);
+
+                musb_write_packet(ep_idx, in->xfer_buf, write_count);
+                HWREGH(USB_BASE + MUSB_TXIE_OFFSET) |= (1 << ep_idx);
+                HWREGB(USB_TXCSRL_BASE(ep_idx)) = USB_TXCSRL1_TXRDY;
+            }
+        }
+
+        if (out->dma_len && usb_musb_dma_done(ep_idx, false, &bytes)) {
+            musb_set_active_ep(ep_idx);
+            HWREGB(USB_RXCSRH_BASE(ep_idx)) &= ~(USB_RXCSRH1_AUTOCL | USB_RXCSRH1_DMAEN | USB_RXCSRH1_DMAMOD);
+            out->dma_len = 0;
+            out->xfer_buf += bytes;
+            out->actual_xfer_len += bytes;
+            out->xfer_len -= bytes;
+            if (out->xfer_len == 0) {
+                HWREGH(USB_BASE + MUSB_RXIE_OFFSET) &= ~(1 << ep_idx);
+                usbd_event_ep_out_complete_handler(0, ep_idx, out->actual_xfer_len);
+            }
+            /* otherwise the tail (a short packet) is read by the interrupt */
+        }
+    }
+}
+#endif
 
 static void musb_write_packet(uint8_t ep_idx, uint8_t *buffer, uint16_t len)
 {
@@ -645,6 +776,12 @@ int usbd_ep_start_write(uint8_t busid, const uint8_t ep, const uint8_t *data, ui
         musb_set_active_ep(old_ep_idx);
         return 0;
     }
+#ifdef CONFIG_USB_MUSB_DMA
+    if (musb_tx_dma(ep_idx)) {
+        musb_set_active_ep(old_ep_idx);
+        return 0;
+    }
+#endif
     data_len = MIN(data_len, g_musb_udc.in_ep[ep_idx].ep_mps);
 
     musb_write_packet(ep_idx, (uint8_t *)data, data_len);
@@ -801,6 +938,16 @@ void USBD_IRQHandler(uint8_t busid)
 
     /* Receive a reset signal from the USB bus */
     if (is & USB_IS_RESET) {
+#ifdef CONFIG_USB_MUSB_DMA
+        for (ep_idx = 1; ep_idx < CONFIG_USB_MUSB_EP_NUM; ep_idx++) {
+            if (g_musb_udc.in_ep[ep_idx].dma_len) {
+                usb_musb_dma_abort(ep_idx, true);
+            }
+            if (g_musb_udc.out_ep[ep_idx].dma_len) {
+                usb_musb_dma_abort(ep_idx, false);
+            }
+        }
+#endif
         memset(&g_musb_udc, 0, sizeof(struct musb_udc));
         usbd_event_reset_handler(0);
         HWREGH(USB_BASE + MUSB_TXIE_OFFSET) = USB_TXIE_EP0;
@@ -822,6 +969,10 @@ void USBD_IRQHandler(uint8_t busid)
     if (is & USB_IS_SUSPEND) {
         usbd_event_suspend_handler(0);
     }
+
+#ifdef CONFIG_USB_MUSB_DMA
+    musb_dma_complete();
+#endif
 
     txis &= HWREGH(USB_BASE + MUSB_TXIE_OFFSET);
     /* Handle EP0 interrupt */
@@ -866,6 +1017,17 @@ void USBD_IRQHandler(uint8_t busid)
         ep_idx++;
     }
 
+#ifdef CONFIG_USB_MUSB_DMA
+    /* a packet that arrived while the DMA ran has had its interrupt masked: look at the FIFOs of the re-armed endpoints */
+    for (ep_idx = 1; ep_idx < CONFIG_USB_MUSB_EP_NUM; ep_idx++) {
+        if ((HWREGH(USB_BASE + MUSB_RXIE_OFFSET) & (1 << ep_idx)) && g_musb_udc.out_ep[ep_idx].ep_enable) {
+            musb_set_active_ep(ep_idx);
+            if (HWREGB(USB_RXCSRL_BASE(ep_idx)) & USB_RXCSRL1_RXRDY) {
+                rxis |= (1 << ep_idx);
+            }
+        }
+    }
+#endif
     rxis &= HWREGH(USB_BASE + MUSB_RXIE_OFFSET);
     ep_idx = 1;
     while (rxis) {
@@ -875,6 +1037,31 @@ void USBD_IRQHandler(uint8_t busid)
             if (HWREGB(USB_RXCSRL_BASE(ep_idx)) & USB_RXCSRL1_RXRDY) {
                 read_count = HWREGH(USB_RXCOUNT_BASE(ep_idx));
 
+#ifdef CONFIG_USB_MUSB_DMA
+                if (g_musb_udc.out_ep[ep_idx].dma_len) {
+                    if (read_count >= g_musb_udc.out_ep[ep_idx].ep_mps) {
+                        /* a full packet that the DMA is about to take */
+                        rxis &= ~(1 << ep_idx);
+                        ep_idx++;
+                        continue;
+                    }
+                    /* a short packet: it ends the DMA transfer, what the DMA has moved so far counts */
+                    {
+                        struct musb_ep_state *out = &g_musb_udc.out_ep[ep_idx];
+                        uint32_t bytes = usb_musb_dma_abort(ep_idx, false);
+
+                        HWREGB(USB_RXCSRH_BASE(ep_idx)) &= ~(USB_RXCSRH1_AUTOCL | USB_RXCSRH1_DMAEN | USB_RXCSRH1_DMAMOD);
+                        out->dma_len = 0;
+                        out->xfer_buf += bytes;
+                        out->actual_xfer_len += bytes;
+                        out->xfer_len -= bytes;
+                    }
+                } else if (musb_rx_dma(ep_idx, read_count)) {
+                    rxis &= ~(1 << ep_idx);
+                    ep_idx++;
+                    continue;
+                }
+#endif
                 musb_read_packet(ep_idx, g_musb_udc.out_ep[ep_idx].xfer_buf, read_count);
                 HWREGB(USB_RXCSRL_BASE(ep_idx)) &= ~(USB_RXCSRL1_RXRDY);
 
