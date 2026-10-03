@@ -66,8 +66,8 @@ extern struct rt_ofw_node *ofw_node_reserved_memory;
 
 extern struct rt_fdt_earlycon fdt_earlycon;
 
-#define ofw_static_cast(to_type, value) \
-    (to_type)(((value) >> ((sizeof(value) - sizeof(to_type)) * 8)))
+/* narrowing keeps the low part of the value (the caller checked that the high part is empty) */
+#define ofw_static_cast(to_type, value) ((to_type)(value))
 
 rt_err_t ofw_alias_scan(void);
 int ofw_alias_node_id(struct rt_ofw_node *np);
