@@ -10,7 +10,8 @@ if GetDepend(['RT_USING_DEV_BUS']) or GetDepend(['RT_USING_DM']):
 if GetDepend(['RT_USING_DM']):
     src = src + ['dm.c', 'driver.c', 'numa.c', 'platform.c', 'power.c', 'power_domain.c']
 
-    if GetDepend(['RT_USING_DFS']):
+    # the root file system of the boot arguments needs the memblock allocator of the MMU port
+    if GetDepend(['RT_USING_DFS']) and GetDepend(['ARCH_MM_MMU']):
         src += ['mnt.c'];
 
 if GetDepend(['RT_USING_OFW']):
