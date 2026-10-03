@@ -26,7 +26,9 @@
 #include <drivers/misc.h>
 #include <drivers/core/dm.h>
 
+#ifdef ARCH_MM_MMU
 #include <mmu.h>
+#endif
 #include <mm_page.h>
 #include <bitmap.h>
 

@@ -8,7 +8,11 @@ if not GetDepend(['RT_USING_DMA']):
 cwd = GetCurrentDir()
 CPPPATH = [cwd + '/../include']
 
-src = ['dma.c', 'dma_pool.c']
+src = ['dma.c']
+
+# the coherent pools map pages through the MMU
+if GetDepend(['ARCH_MM_MMU']):
+    src += ['dma_pool.c']
 
 if GetDepend(['RT_DMA_PL330']):
     src += ['dma-pl330.c']
