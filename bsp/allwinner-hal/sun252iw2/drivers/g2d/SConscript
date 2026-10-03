@@ -1,0 +1,9 @@
+import os
+from building import *
+
+cwd = GetCurrentDir()
+src = Glob('sunxi/*.c') + ['g2d-sun252i.c']
+CPPPATH = [cwd, os.path.join(cwd, '..', 'include')]
+group = DefineGroup('G2D', src, depend = [''], CPPPATH = CPPPATH,
+                    LOCAL_CFLAGS = ' -Wno-unused-parameter -Wno-sign-compare -Wno-missing-field-initializers')
+Return('group')
