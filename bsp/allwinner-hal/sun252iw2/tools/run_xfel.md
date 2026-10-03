@@ -44,11 +44,62 @@ Console: UART3 (PE08/PE09), 115200 8N1 (`chosen/stdout-path`). Expected: RT-Thre
 | vdec/ (video engine, prebuilt decoder archive in `vdec/lib`, `vdec/vdec.h`) | allwinner,sunxi-ve | `test_vdec` |
 | mipi_dbi/mipi-dbi-sun252i.c | allwinner,sunxi-dbi | `test_dbi` (no panel behind it) |
 | usb/phy/usb-phy-sun252i.c (shared UTMI PHY, VBUS gpio) | allwinner,sunxi-usb-phy | with the two below |
-| usb/cherryusb/usb-otg-sun252i.c (CherryUSB MUSB device) | allwinner,sunxi-musb | `usb_device_start`, `usb_device_send` (a COM port on the host PC) |
+| usb/cherryusb/usb-otg-sun252i.c (CherryUSB MUSB device) | allwinner,sunxi-musb | `usb_device_start`, `usb_device_send` (tests: a COM port on the host PC) |
 | usb/cherryusb/usb-hci-sun252i.c + usb_hc_ohci.c (CherryUSB EHCI/OHCI host) | allwinner,sunxi-ehci | `usbh_start` (not run: the single port is the download cable) |
 
-`test_all` runs the self contained ones in turn. The device tree is the only place that names pins, bases, interrupts,
+`test_all` runs the self contained ones in turn (the tests and the benchmarks are not built unless BSP_USING_TESTS / BSP_USING_BENCH is defined in `rtconfig.h`, see "Tests and benchmarks"). The device tree is the only place that names pins, bases, interrupts,
 clocks and resets; `drivers/clock_control/ccu-sun252i.c` is the one place that knows the clock registers.
+
+## Tests and benchmarks (applications/tests, applications/bench)
+
+Both are off by default. `#define BSP_USING_TESTS` in `rtconfig.h` builds the `test_*` commands and `test_all`;
+`#define BSP_USING_BENCH` builds the speed measurements: `g2d_bench`, `g2d_bench_clk`, `h264_bench`, `bench_stop`,
+`usb_bench_start`, `usb_bench_stat` and the other `usb_bench_*` commands. The bus tools `mbus_stats`, `mbus_masters`,
+`mbus_set` and `mbus_find` are part of the MBUS driver.
+
+The board is chosen with the environment variable `SUN252I_BOARD` when building: `evb` (default, SD card slot), `evb-jtag` (the
+pins of the slot as JTAG port), `evb-h264` (display, G2D, DBI, USB, audio and PWM off: the 16 MB PSRAM is left to the video
+engine, the 1024x600 frame buffer alone is 2.4 MB) and `yuzukineko`.
+
+### G2D (`g2d_bench`, `g2d_bench_clk`)
+
+1280x720 ARGB8888, hardware time only (command list start to end interrupt, no cache maintenance, no queueing), 20 runs each,
+module clock 300 MHz:
+
+| operation | hardware time | memory traffic |
+|---|---|---|
+| fill | 3.86 ms | 952 MB/s |
+| copy | 10.4 ms | 710 MB/s |
+| RGB565 to ARGB8888 | 7.6 ms | 725 MB/s |
+| NV12 to ARGB8888 | 7.2 ms | 707 MB/s |
+| scale 640x360 to 720p | 6.3 ms | 735 MB/s |
+| rotate 90 | 19.1 ms | 385 MB/s |
+| flip horizontal | 23.4 ms | 315 MB/s |
+| blend src-over | 17.0 ms | 651 MB/s |
+
+Only the fill depends on the module clock below 300 MHz (150 MHz 6.15 ms, 200 MHz 4.62 ms); everything else is the same from 150 to
+600 MHz, the memory is the limit. 1200 MHz (PLL_PERI_2X undivided) does not work. The G2D is bus master 13; with that master at
+priority 3 and no limit, blend drops to 13.2 ms, rotate to 17.4 ms and NV12 conversion to 6.8 ms, fill and copy do not change.
+
+### H.264 decode (`h264_bench <file> [ve_mhz [max_frames [no_cache]]]`)
+
+Decodes a raw Annex B file of the SD card as fast as it goes (no sound, no picture, no pacing), cuts it into pictures, times the
+decode of each with the 24 MHz counter and prints fps, the decode time of I, P (and B) pictures and the memory traffic of the video
+engine (MBUS counter `ve`); `bench_stop` ends a run early and prints the summary. Run it on the `evb-h264` board (the default
+board has too little free heap for 720p).
+
+1280x720 stream (11 IDR pictures of 73 KB, P pictures of 6 KB):
+
+| | |
+|---|---|
+| frame rate | 33 fps (30-35 over every 5 s window) |
+| I picture decode | 26.8 ms |
+| P picture decode | 28.4 ms (18 ms at best) |
+| video engine memory traffic | 435 MB/s, 13.1 MB per picture |
+
+What does not help: the video engine clock (200 MHz 32.1 ms, 300 MHz 30.1, 400 MHz default 29.2, 600 MHz 28.4 per P picture),
+MBUS priority 3 and no limit for the video engine (master 4: `mbus_set 4 3 0`; `mbus_find 4` finds a master while a load runs), skipping the
+cache maintenance of the output (`no_cache` / `vdec_stream_config.no_cache_ops`, 2%). The decode is limited by the memory.
 
 ## MP4 player (applications/apps/mp4)
 
@@ -71,10 +122,11 @@ a pattern check of both directions (0 errors, odd write sizes included):
 | OUT (host to board) | 14.2 MB/s, 49% CPU | 26.3 MB/s, 7% CPU |
 | IN (board to host) | 22 MB/s, 39% CPU | 23.9 MB/s, 6% CPU |
 
-The rates are limited by the Windows serial driver. Commands: `usb_bench_cpu` (idle rate, run it first and with no
-traffic), `usb_bench_src 1|0` (IN stream), `usb_bench_check 1|0` (verify the OUT pattern, costs CPU: turn it off for
-the CPU figure), `usb_bench_stat` (rates and load over the last burst); host side `usbbench.ps1 -Mode out|in
--Seconds N [-Odd 1000]` on the PC. `usb_regs` also dumps the DMA channels.
+The rates are limited by the Windows serial driver. The measurement is in `applications/bench` (BSP_USING_BENCH): `usb_bench_start`
+brings the CDC port up, then `usb_bench_cpu` (idle rate, run it first and with no traffic), `usb_bench_src 1|0` (IN stream),
+`usb_bench_check 1|0` (verify the OUT pattern, costs CPU: turn it off for the CPU figure), `usb_bench_load 1|0` (memory
+traffic in the background) and `usb_bench_stat` (rates and load over the last burst); host side `usbbench.ps1 -Mode out|in
+-Seconds N [-Odd 1000]` on the PC. The tests' `usb_regs` also dumps the DMA channels.
 
 ## USB second screen (applications/apps/usb_display)
 
@@ -85,7 +137,7 @@ driver is test signed); Windows then shows a second monitor that the board displ
 endpoint, the video engine decodes them through the motion JPEG stream of `vdec_stream_*` and the picture goes to the video
 plane. The statistics line every 5 s shows frames per second, KB/s and the decode and display time per frame.
 `usb_display_selftest` runs a built-in 320x240 JPEG through the same decode and display path without USB
-(3 ms decode per frame). The port stays a display until the next reboot: `usb_device_start` (CDC) and
+(3 ms decode per frame). The port stays a display until the next reboot: the CDC device (`usb_device_start` of the tests, `usb_bench_start` of the bench) and
 `usb_display_start` exclude each other. After a download with xfel run `usb_reconnect` once so that the PC sees a fresh attach.
 
 
