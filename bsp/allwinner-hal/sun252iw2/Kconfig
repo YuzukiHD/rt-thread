@@ -1,0 +1,7 @@
+mainmenu "RT-Thread Configuration"
+
+config BOARD_SUN252IW2
+    bool
+    default y
+
+source "$RTT_ROOT/Kconfig"

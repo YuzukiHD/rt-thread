@@ -1,0 +1,457 @@
+/*
+ * Copyright (c) 2006-2026, RT-Thread Development Team
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Allwinner sun252iw2 (sun252i): one T-Head XuanTie C907, internal PSRAM and the
+ * peripherals the BSP drives.
+ */
+
+#include <dt-bindings/clock/sun252iw2-ccu.h>
+#include <dt-bindings/pinctrl/allwinner-pinctrl.h>
+#include <dt-bindings/display/sunxi-display.h>
+
+/ {
+	#address-cells = <1>;
+	#size-cells = <1>;
+
+	aliases {
+		i2c0 = &i2c0;
+		i2c1 = &i2c1;
+		i2c2 = &i2c2;
+		spi0 = &spi0;
+		spi1 = &spi1;
+		pwm0 = &pwm;
+		adc0 = &gpadc;
+		wdt0 = &wdt;
+	};
+
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		timebase-frequency = <24000000>;
+
+		cpu0: cpu@0 {
+			compatible = "xuantie,c907", "riscv";
+			device_type = "cpu";
+			reg = <0>;
+			riscv,isa = "rv32imafdc_zicsr_zifencei";
+			clock-frequency = <24000000>;
+			d-cache-line-size = <64>;
+			i-cache-line-size = <64>;
+
+			hlic: interrupt-controller {
+				compatible = "riscv,cpu-intc";
+				#address-cells = <0>;
+				#interrupt-cells = <1>;
+				interrupt-controller;
+			};
+		};
+	};
+
+	soc {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "simple-bus";
+		ranges;
+
+		plic: interrupt-controller@10000000 {
+			compatible = "sifive,plic-1.0.0";
+			#address-cells = <0>;
+			#interrupt-cells = <2>;
+			interrupt-controller;
+			interrupts-extended = <&hlic 11>;
+			reg = <0x10000000 0x210000>;
+			riscv,max-priority = <7>;
+			riscv,ndev = <192>;
+		};
+
+		ccu: clock-controller@2001000 {
+			compatible = "allwinner,sun252i-ccu";
+			reg = <0x02001000 0x1000>;
+			#clock-cells = <1>;
+			#reset-cells = <1>;
+		};
+
+		dma: dma-controller@3002000 {
+			compatible = "allwinner,sun252i-dma";
+			reg = <0x03002000 0x1000>;
+			interrupt-parent = <&plic>;
+			interrupts = <50 4>;
+			clocks = <&ccu CLK_BUS_DMA>, <&ccu CLK_BUS_DMA_M>;
+			clock-names = "bus", "mbus";
+			resets = <&ccu RST_BUS_DMA>;
+			#dma-cells = <2>;
+		};
+
+		pio: pinctrl@2000000 {
+			compatible = "allwinner,sun252i-pio";
+			reg = <0x02000000 0x450>;
+			interrupt-parent = <&plic>;
+			interrupts = <67 4>, <69 4>, <71 4>, <73 4>, <75 4>, <77 4>;
+			gpio-controller;
+			#gpio-cells = <3>;
+		};
+
+		mmc0: mmc@4020000 {
+			compatible = "allwinner,sun252i-mmc";
+			reg = <0x04020000 0x1000>;
+			interrupt-parent = <&plic>;
+			interrupts = <40 4>;
+			clocks = <&ccu CLK_BUS_SMHC0>, <&ccu CLK_SMHC0>;
+			clock-names = "ahb", "mod";
+			resets = <&ccu RST_BUS_SMHC0>;
+			status = "disabled";
+		};
+
+		codec: audio-codec@2030000 {
+			compatible = "allwinner,sun252i-codec";
+			reg = <0x02030000 0x1000>;
+			clocks = <&ccu CLK_BUS_AUDIO_CODEC>, <&ccu CLK_AUDIO_DAC>, <&ccu CLK_AUDIO_ADC>;
+			clock-names = "bus", "dac", "adc";
+			resets = <&ccu RST_BUS_AUDIO_CODEC>;
+			dmas = <&dma 1 7>, <&dma 2 7>;
+			dma-names = "tx", "rx";
+			status = "disabled";
+		};
+
+		i2s0: i2s@2032000 {
+			compatible = "allwinner,sun252i-i2s";
+			reg = <0x02032000 0x1000>;
+			clocks = <&ccu CLK_BUS_I2S0>, <&ccu CLK_I2S0>;
+			clock-names = "bus", "mod";
+			resets = <&ccu RST_BUS_I2S0>;
+			dmas = <&dma 3 3>, <&dma 4 3>;
+			dma-names = "tx", "rx";
+			status = "disabled";
+		};
+
+		owa: spdif@2036000 {
+			compatible = "allwinner,sun252i-owa";
+			reg = <0x02036000 0x1000>;
+			clocks = <&ccu CLK_BUS_OWA>, <&ccu CLK_OWA_TX>, <&ccu CLK_OWA_RX>;
+			clock-names = "bus", "tx", "rx";
+			resets = <&ccu RST_BUS_OWA>;
+			dmas = <&dma 5 2>, <&dma 6 2>;
+			dma-names = "tx", "rx";
+			status = "disabled";
+		};
+
+		mbus: dram-controller@3102000 {
+			compatible = "allwinner,sun252i-mbus";
+			reg = <0x03102000 0x1000>;
+		};
+
+		wdt: watchdog@6011000 {
+			compatible = "allwinner,sun252i-wdt";
+			reg = <0x06011000 0x20>;
+		};
+
+		gpadc: adc@2009000 {
+			compatible = "allwinner,sun252i-gpadc";
+			reg = <0x02009000 0x400>;
+			clocks = <&ccu CLK_BUS_GPADC>;
+			resets = <&ccu RST_BUS_GPADC>;
+			#io-channel-cells = <1>;
+		};
+
+		pwm: pwm@2000c00 {
+			compatible = "allwinner,sun252i-pwm";
+			reg = <0x02000c00 0x400>;
+			clocks = <&ccu CLK_BUS_PWM>;
+			resets = <&ccu RST_BUS_PWM>;
+			#pwm-cells = <3>;
+			status = "disabled";
+		};
+
+		pwm_bl: pwm@200a000 {
+			compatible = "allwinner,sun252i-pwm-bl";
+			reg = <0x0200a000 0x400>;
+			clocks = <&ccu CLK_BUS_PWM_BL>, <&ccu CLK_PWM_BL>;
+			clock-names = "bus", "mod";
+			resets = <&ccu RST_BUS_PWM_BL>;
+			#pwm-cells = <3>;
+			status = "disabled";
+		};
+
+		/*
+		 * Display pipeline:
+		 *
+		 *   de0 -> tcon_lcd0 -+-> rgb0  -> panel
+		 *                     +-> lvds0 -> panel  (via dphy0)
+		 *                     +-> dsi0  -> panel  (via dphy0)
+		 *
+		 * The boards enable the blocks they wire and add the panel and
+		 * backlight nodes; the links only take effect when both ends
+		 * are enabled.
+		 */
+		display: display-subsystem {
+			compatible = "allwinner,sunxi-display";
+			status = "disabled";
+		};
+
+		de0: display-engine@5000000 {
+			compatible = "allwinner,sun252iw2-display-engine";
+			reg = <0x05000000 0x200000>;
+			clocks = <&ccu CLK_DE>, <&ccu CLK_BUS_DE>;
+			clock-names = "mod", "bus";
+			clock-rates = <300000000 0>;
+			resets = <&ccu RST_BUS_DE>;
+			reset-names = "bus";
+			status = "disabled";
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				port@0 {
+					reg = <0>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+
+					endpoint@0 {
+						reg = <0>;
+						remote-endpoint = <&tcon_lcd0>;
+					};
+				};
+			};
+		};
+
+		tcon_top0: tcon-top@5460000 {
+			compatible = "allwinner,sun252iw2-tcon-top";
+			reg = <0x05460000 0x1000>;
+			clocks = <&ccu CLK_BUS_DPSS_TOP>;
+			clock-names = "bus";
+			resets = <&ccu RST_BUS_DPSS_TOP>;
+			reset-names = "bus";
+			status = "disabled";
+		};
+
+		tcon_lcd0: tcon-lcd@5461000 {
+			compatible = "allwinner,sun252iw2-tcon-lcd";
+			reg = <0x05461000 0x1000>;
+			interrupts = <90 1>;
+			interrupt-parent = <&plic>;
+			clocks = <&ccu CLK_TCONLCD>, <&ccu CLK_BUS_TCONLCD>;
+			clock-names = "mod", "bus";
+			resets = <&ccu RST_BUS_TCONLCD>;
+			reset-names = "bus";
+			top = <&tcon_top0>;
+			status = "disabled";
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				port@1 {
+					reg = <1>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+
+					endpoint@0 {
+						reg = <0>;
+						remote-endpoint = <&rgb0>;
+					};
+
+					endpoint@1 {
+						reg = <1>;
+						remote-endpoint = <&lvds0>;
+					};
+
+					endpoint@2 {
+						reg = <2>;
+						remote-endpoint = <&dsi0>;
+					};
+				};
+			};
+		};
+
+		rgb0: rgb {
+			compatible = "allwinner,sunxi-rgb";
+			status = "disabled";
+		};
+
+		lvds0: lvds {
+			compatible = "allwinner,sunxi-lvds";
+			resets = <&ccu RST_BUS_LVDS0>;
+			reset-names = "bus";
+			phy = <&dphy0>;
+			status = "disabled";
+		};
+
+		dsi0: dsi@5450000 {
+			compatible = "allwinner,sun252iw2-mipi-dsi";
+			reg = <0x05450000 0x1000>;
+			interrupts = <92 1>;
+			interrupt-parent = <&plic>;
+			clocks = <&ccu CLK_DSI>, <&ccu CLK_BUS_DSI>;
+			clock-names = "mod", "bus";
+			clock-rates = <150000000 0>;
+			resets = <&ccu RST_BUS_DSI>;
+			reset-names = "bus";
+			phy = <&dphy0>;
+			status = "disabled";
+		};
+
+		dphy0: phy@5451000 {
+			compatible = "allwinner,sun252iw2-combo-dphy";
+			reg = <0x05451000 0x1000>;
+			clocks = <&ccu CLK_COMBOPHY0>, <&ccu CLK_BUS_COMBOPHY0>;
+			clock-names = "mod", "bus";
+			status = "disabled";
+		};
+
+		/* system configuration and chip id blocks used by the display pipeline */
+		syscon: syscon@3000000 {
+			compatible = "allwinner,sun252i-syscon";
+			reg = <0x03000000 0x200>;
+		};
+
+		sid: efuse@3006000 {
+			compatible = "allwinner,sun252i-sid";
+			reg = <0x03006000 0x100>;
+		};
+
+		usbphy: usb-phy@4100400 {
+			compatible = "allwinner,sunxi-usb-phy";
+			#phy-cells = <0>;
+			/* OTG glue block, HCI PHY/SIE block */
+			reg = <0x04100400 0x40>, <0x04101800 0x40>;
+			reg-names = "otg", "hci";
+			clocks = <&ccu CLK_BUS_USB>;
+			resets = <&ccu RST_USB_PHY0>;
+			sram-remap-reg = <0x03000004>;
+			sram-remap-clear = <0x0a000000>;
+			status = "disabled";
+		};
+
+		usbotg: usb@4100000 {
+			compatible = "allwinner,sunxi-musb";
+			reg = <0x04100000 0x400>;
+			interrupts = <29 1>;
+			interrupt-parent = <&plic>;
+			clocks = <&ccu CLK_BUS_USB_OTG>;
+			resets = <&ccu RST_BUS_USB_OTG>;
+			phys = <&usbphy>;
+			status = "disabled";
+		};
+
+		usbhci: usb@4101000 {
+			compatible = "allwinner,sunxi-ehci";
+			/* EHCI and OHCI register windows */
+			reg = <0x04101000 0x100>, <0x04101400 0x100>;
+			reg-names = "ehci", "ohci";
+			interrupts = <30 1>, <31 1>;
+			interrupt-names = "ehci", "ohci";
+			interrupt-parent = <&plic>;
+			clocks = <&ccu CLK_BUS_USB_EHCI>, <&ccu CLK_BUS_USB_OHCI>;
+			clock-names = "ehci", "ohci";
+			resets = <&ccu RST_BUS_USB_EHCI>, <&ccu RST_BUS_USB_OHCI>;
+			phys = <&usbphy>;
+			status = "disabled";
+		};
+
+		g2d: g2d@5410000 {
+			compatible = "allwinner,sunxi-g2d";
+			reg = <0x05410000 0x40000>;
+			interrupts = <111 1>;
+			interrupt-parent = <&plic>;
+			clocks = <&ccu CLK_G2D>, <&ccu CLK_BUS_G2D>, <&ccu CLK_BUS_G2D_M>;
+			clock-names = "mod", "bus", "mbus";
+			resets = <&ccu RST_BUS_G2D>;
+			clock-frequency = <300000000>;
+			status = "disabled";
+		};
+
+		ve: video-engine@1c0e000 {
+			compatible = "allwinner,sunxi-ve";
+			reg = <0x01c0e000 0x2000>;
+			interrupts = <66 1>;
+			interrupt-parent = <&plic>;
+			clocks = <&ccu CLK_VE>, <&ccu CLK_BUS_VE>, <&ccu CLK_BUS_VE_M>,
+				 <&ccu CLK_PLL_PERI_2X>, <&ccu CLK_PLL_PERI_1X>, <&ccu CLK_PLL_PERI_480M>;
+			clock-names = "mod", "bus", "mbus", "peri2x", "peri1x", "peri480m";
+			resets = <&ccu RST_BUS_VE>;
+			status = "disabled";
+		};
+
+		/* the SPI1 block in its display bus interface mode (type C, 4 wire) */
+		dbi: mipi-dbi@4026000 {
+			compatible = "allwinner,sunxi-dbi";
+			reg = <0x04026000 0x1000>;
+			clocks = <&ccu CLK_BUS_SPI1>, <&ccu CLK_SPI1>;
+			clock-names = "bus", "mod";
+			resets = <&ccu RST_BUS_SPI1>;
+			clock-frequency = <5000000>;
+			dmas = <&dma 0 23>;
+			dma-names = "tx";
+			status = "disabled";
+		};
+
+		i2c0: i2c@2502000 {
+			compatible = "allwinner,sun252i-i2c";
+			reg = <0x02502000 0x400>;
+			clocks = <&ccu CLK_BUS_TWI0>;
+			resets = <&ccu RST_BUS_TWI0>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "disabled";
+		};
+
+		i2c1: i2c@2502400 {
+			compatible = "allwinner,sun252i-i2c";
+			reg = <0x02502400 0x400>;
+			clocks = <&ccu CLK_BUS_TWI1>;
+			resets = <&ccu RST_BUS_TWI1>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "disabled";
+		};
+
+		i2c2: i2c@2502800 {
+			compatible = "allwinner,sun252i-i2c";
+			reg = <0x02502800 0x400>;
+			clocks = <&ccu CLK_BUS_TWI2>;
+			resets = <&ccu RST_BUS_TWI2>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "disabled";
+		};
+
+		spi0: spi@4025000 {
+			compatible = "allwinner,sun252i-spi";
+			reg = <0x04025000 0x1000>;
+			clocks = <&ccu CLK_BUS_SPI0>, <&ccu CLK_SPI0>;
+			clock-names = "ahb", "mod";
+			resets = <&ccu RST_BUS_SPI0>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "disabled";
+		};
+
+		spi1: spi@4026000 {
+			compatible = "allwinner,sun252i-spi";
+			reg = <0x04026000 0x1000>;
+			clocks = <&ccu CLK_BUS_SPI1>, <&ccu CLK_SPI1>;
+			clock-names = "ahb", "mod";
+			resets = <&ccu RST_BUS_SPI1>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "disabled";
+		};
+
+		uart3: serial@2500c00 {
+			compatible = "snps,dw-apb-uart";
+			reg = <0x02500c00 0x400>;
+			reg-shift = <2>;
+			reg-io-width = <4>;
+			clock-frequency = <24000000>;
+			interrupts = <5 4>;
+			interrupt-parent = <&plic>;
+			clocks = <&ccu CLK_BUS_UART3>;
+			clock-names = "apb_pclk";
+			resets = <&ccu RST_BUS_UART3>;
+			status = "disabled";
+		};
+	};
+};

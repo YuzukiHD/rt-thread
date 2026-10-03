@@ -1,0 +1,33 @@
+import os
+import subprocess
+from building import *
+
+cwd = GetCurrentDir()
+src = Glob('*.c') + Glob('*.S')
+CPPPATH = [cwd, os.path.join(cwd, '..', 'drivers')]
+CPPDEFINES = []
+
+# the device tree of the board: preprocess, compile and link the blob into the image
+if GetDepend('RT_USING_BUILTIN_FDT'):
+    dts_dir = os.path.join(cwd, '..', 'dts')
+    dts = os.path.join(dts_dir, 'sun252iw2-evb.dts')
+    dtb = os.path.join(cwd, 'sun252iw2-evb.dtb')
+    deps = [os.path.join(dts_dir, f) for f in os.listdir(dts_dir) if f.endswith(('.dts', '.dtsi'))]
+    newest = max(os.path.getmtime(f) for f in deps)
+    if not os.path.exists(dtb) or os.path.getmtime(dtb) < newest:
+        tmp = dtb + '.tmp'
+        cpp = ['gcc', '-E', '-P', '-x', 'assembler-with-cpp', '-nostdinc', '-undef',
+               '-I', os.path.join(dts_dir, 'include'),
+               '-I', os.path.join(Dir('#').abspath, '..', '..', '..', 'components', 'drivers', 'include'),
+               dts, '-o', tmp]
+        subprocess.check_call(cpp)
+        subprocess.check_call([os.environ.get('DTC', 'dtc'), '-I', 'dts', '-O', 'dtb', '-@', '-o', dtb, tmp])
+        os.remove(tmp)
+    CPPDEFINES.append(('RT_BUILTIN_FDT_PATH', '\\"' + dtb + '\\"'))
+    # the blob is included by the assembler: its hash on the command line rebuilds the object when the tree changes
+    import hashlib
+    CPPDEFINES.append(('RT_BUILTIN_FDT_HASH', hashlib.md5(open(dtb, 'rb').read()).hexdigest()[:8].join(['0x', ''])))
+
+group = DefineGroup('Board', src, depend = [''], CPPPATH = CPPPATH, CPPDEFINES = CPPDEFINES)
+
+Return('group')

@@ -1,0 +1,57 @@
+import os
+from building import *
+
+cwd = GetCurrentDir()
+
+# drivers already moved to the device model (platform drivers bound by the device tree).
+# The rest of the old sources is not built until it is rewritten (see the porting list).
+drivers = [
+    ('timer/riscv_machine_timer.c', ''),
+    ('clock_control/ccu-sun252i.c', ''),
+    ('interrupt_controller/pic-plic.c', ''),
+    ('pinctrl/pinctrl-sun252i.c', ''),
+    ('dma/dma-sun252i.c', ''),
+    ('watchdog/watchdog-sun252i.c', ''),
+    ('i2c/i2c-sun252i.c', ''),
+    ('spi/spi-sun252i.c', ''),
+    ('pwm/pwm-sun252i.c', ''),
+    ('pwm/pwm-bl-sun252i.c', ''),
+    ('adc/adc-sun252i.c', ''),
+    ('sdio/sdio-sun252i.c', ''),
+    ('mbus/mbus-sun252i.c', ''),
+    ('audio/codec-sun252i.c', ''),
+    ('audio/i2s-sun252i.c', ''),
+    ('audio/owa-sun252i.c', ''),
+    ('mipi_dbi/mipi-dbi-sun252i.c', ''),
+    ('usb/phy/usb-phy-sun252i.c', ''),
+    ('usb/cherryusb/usb-otg-sun252i.c', ''),
+    ('usb/cherryusb/usb-hci-sun252i.c', 'RT_CHERRYUSB_HOST'),
+    ('usb/cherryusb/usb_hc_ohci.c', 'RT_CHERRYUSB_HOST'),
+    ('interrupt_controller/trap_riscv.c', ''),
+]
+
+src = Glob('*.S')
+for f, dep in drivers:
+    if dep == '' or GetDepend(dep):
+        src.append(f)
+
+# every driver directory holds its own headers
+CPPPATH = [cwd, os.path.join(cwd, 'include'), os.path.join(cwd, '..', 'dts', 'include'), os.path.join(cwd, 'mbus'), os.path.join(cwd, 'audio'), os.path.join(cwd, 'dma'),
+           os.path.join(cwd, '..', '..', '..', '..', 'components', 'drivers', 'pin')]
+for d in sorted({os.path.dirname(f) for f, _ in drivers}):
+    CPPPATH.append(os.path.join(cwd, d))
+
+# the CherryUSB component of the tree: the ports and classes the glue code includes
+cherryusb = os.path.join(cwd, '..', '..', '..', '..', 'components', 'drivers', 'usb', 'cherryusb')
+CPPPATH += [os.path.join(cherryusb, 'common'), os.path.join(cherryusb, 'core'), os.path.join(cherryusb, 'osal'),
+            os.path.join(cherryusb, 'port', 'ehci'), os.path.join(cherryusb, 'port', 'ohci'),
+            os.path.join(cherryusb, 'port', 'musb'), os.path.join(cherryusb, 'class', 'hub'),
+            os.path.join(cherryusb, 'class', 'cdc'), os.path.join(cherryusb, 'class', 'msc')]
+
+group = DefineGroup('Drivers', src, depend = [''], CPPPATH = CPPPATH, ASFLAGS = ' -I ' + cwd)
+
+# drivers with a directory of their own
+for d in ['display', 'g2d', 'vdec']:
+    group = group + SConscript(os.path.join(d, 'SConscript'))
+
+Return('group')

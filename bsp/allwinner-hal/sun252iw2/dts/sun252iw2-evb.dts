@@ -1,0 +1,279 @@
+/*
+ * Copyright (c) 2006-2026, RT-Thread Development Team
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Allwinner sun252iw2 EVB: console on UART3 (PE08/PE09).
+ */
+
+/dts-v1/;
+
+#include "sun252iw2.dtsi"
+
+/ {
+	model = "YuzukiHD sun252iw2 EVB";
+	compatible = "yuzukihd,sun252iw2-evb", "allwinner,sun252iw2";
+
+	aliases {
+		serial3 = &uart3;
+	};
+
+	chosen {
+		stdout-path = "serial3:115200n8";
+	};
+
+	memory@40000000 {
+		device_type = "memory";
+		reg = <0x40000000 0x01000000>;
+	};
+};
+
+/* UART3 console on PE08 (TX) / PE09 (RX), function 6 */
+&pio {
+	uart3_pins: uart3-pins {
+		pinmux = <ALLWINNER_PINMUX(ALLWINNER_PIO_PE, 8, 6)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PE, 9, 6)>;
+	};
+};
+
+&pio {
+	i2c2_pins: i2c2-pins {
+		pinmux = <ALLWINNER_PINMUX(ALLWINNER_PIO_PD, 10, 4)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PD, 11, 4)>;
+		bias-pull-up;
+	};
+
+	spi0_pins: spi0-pins {
+		pinmux = <ALLWINNER_PINMUX(ALLWINNER_PIO_PC, 0, 3)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PC, 2, 3)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PC, 4, 3)>;
+	};
+
+	spi0_pulled_pins: spi0-pulled-pins {
+		pinmux = <ALLWINNER_PINMUX(ALLWINNER_PIO_PC, 1, 3)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PC, 3, 3)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PC, 5, 3)>;
+		bias-pull-up;
+	};
+
+	sdc0_pins: sdc0-pins {
+		pinmux = <ALLWINNER_PINMUX(ALLWINNER_PIO_PF, 0, 2)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PF, 1, 2)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PF, 3, 2)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PF, 4, 2)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PF, 5, 2)>;
+		bias-pull-up;
+	};
+
+	sdc0_clk_pin: sdc0-clk-pin {
+		pinmux = <ALLWINNER_PINMUX(ALLWINNER_PIO_PF, 2, 2)>;
+		bias-disable;
+	};
+
+	rgb_pins: rgb-pins {
+		pinmux = <ALLWINNER_PINMUX(ALLWINNER_PIO_PD, 0, 2)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PD, 1, 2)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PD, 2, 2)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PD, 3, 2)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PD, 4, 2)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PD, 5, 2)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PD, 6, 2)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PD, 7, 2)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PD, 8, 2)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PD, 9, 2)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PE, 6, 4)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PE, 7, 4)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PD, 12, 2)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PD, 13, 2)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PD, 14, 2)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PD, 15, 2)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PD, 16, 2)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PD, 17, 2)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PD, 18, 2)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PD, 19, 2)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PD, 20, 2)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PD, 21, 2)>;
+	};
+
+	pwm_bl_pins: pwm-bl-pins {
+		pinmux = <ALLWINNER_PINMUX(ALLWINNER_PIO_PB, 0, 2)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PB, 1, 2)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PB, 2, 2)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PB, 3, 2)>;
+	};
+};
+
+&i2c2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2c2_pins>;
+	status = "okay";
+};
+
+/* the SPI NOR flash of the board hangs on SPI0 */
+&spi0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&spi0_pins>, <&spi0_pulled_pins>;
+	status = "okay";
+};
+
+/* the SD card slot: PF6 is low with a card in */
+&mmc0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&sdc0_pins>, <&sdc0_clk_pin>;
+	cd-gpios = <&pio 5 6 0>;
+	status = "okay";
+};
+
+/* the headphone / speaker output and the microphone; the speaker amplifier enable is PE10 */
+&codec {
+	speaker-gpios = <&pio 4 10 0>;
+	status = "okay";
+};
+
+/* I2S0 and S/PDIF have no pins on this board: they run with their internal loopback */
+&i2s0 {
+	status = "okay";
+};
+
+&owa {
+	status = "okay";
+};
+
+&pwm {
+	status = "okay";
+};
+
+/* the panel backlight of the EVB: PB0..PB3 */
+&pwm_bl {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pwm_bl_pins>;
+	status = "okay";
+};
+
+&uart3 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&uart3_pins>;
+	status = "okay";
+};
+
+/* 1024x600 RGB666 panel: de0 -> tcon_lcd0 -> rgb0 -> panel0, backlight on PWM_BL */
+/ {
+	backlight0: backlight {
+		compatible = "pwm-backlight";
+		pwms = <&pwm_bl 0 20000 1>;
+		max-level = <255>;
+		default-level = <250>;
+	};
+
+	panel0: panel {
+		compatible = "panel-simple";
+		width = <1024>;
+		height = <600>;
+		width-mm = <154>;
+		height-mm = <86>;
+		bus-format = "rgb666-1x18";
+		enable-delay-ms = <50>;
+		backlight = <&backlight0>;
+
+		/* PD22 switches the panel supply */
+		power-on-sequence = <SUNXI_CMD_GPIO(SUNXI_PIN(ALLWINNER_PIO_PD, 22), 1)
+				     SUNXI_CMD_DELAY(30)>;
+		power-off-sequence = <SUNXI_CMD_GPIO(SUNXI_PIN(ALLWINNER_PIO_PD, 22), 0)
+				      SUNXI_CMD_DELAY(20)>;
+
+		display-timings {
+			timing0 {
+				clock-frequency = <49000000>;
+				hsync-len = <20>;
+				hfront-porch = <161>;
+				hback-porch = <35>;
+				vsync-len = <10>;
+				vfront-porch = <15>;
+				vback-porch = <25>;
+				hsync-active = <0>;
+				vsync-active = <0>;
+				de-active = <1>;
+				pixelclk-active = <1>;
+			};
+		};
+	};
+};
+
+&de0 {
+	status = "okay";
+	brightness = <50>;
+	contrast = <50>;
+	saturation = <57>;
+	hue = <50>;
+};
+
+&tcon_top0 {
+	status = "okay";
+};
+
+&tcon_lcd0 {
+	status = "okay";
+};
+
+&rgb0 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&rgb_pins>;
+	hv-mode = <SUNXI_HV_PARALLEL_RGB>;
+	rgb-swap = <5>;
+
+	ports {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		port@1 {
+			reg = <1>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			endpoint@0 {
+				reg = <0>;
+				remote-endpoint = <&panel0>;
+			};
+		};
+	};
+};
+
+&display {
+	status = "okay";
+};
+
+/* 2D graphics accelerator */
+&g2d {
+	status = "okay";
+};
+
+/* video engine: JPEG, PNG and H.264 decoder */
+&ve {
+	status = "okay";
+};
+
+/*
+ * The DBI pins (PD0..PD5) belong to the RGB panel on this board: the node has no pin state and no
+ * chip select or reset line, so the transfers run without a panel behind them.
+ */
+&dbi {
+	status = "okay";
+};
+
+/*
+ * USB 2.0 port: the OTG (device) controller and the EHCI/OHCI host controllers share one PHY, an
+ * application starts the stack of the role it needs. PE02 drives VBUS for the host role.
+ */
+&usbphy {
+	vbus-gpios = <&pio 4 2 0>;
+	status = "okay";
+};
+
+&usbhci {
+	status = "okay";
+};
+
+&usbotg {
+	status = "okay";
+};
