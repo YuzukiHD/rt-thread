@@ -213,6 +213,11 @@ __WEAK bool usb_musb_dma_done(uint8_t ep_idx, bool is_in, uint32_t *bytes)
     return false;
 }
 
+/* wait until the transfer of the endpoint has stopped moving data (the packets it can take are in memory) */
+__WEAK void usb_musb_dma_settle(uint8_t ep_idx, bool is_in)
+{
+}
+
 /* stop the transfer of the endpoint, returns how much it has moved so far */
 __WEAK uint32_t usb_musb_dma_abort(uint8_t ep_idx, bool is_in)
 {
@@ -1039,8 +1044,21 @@ void USBD_IRQHandler(uint8_t busid)
 
 #ifdef CONFIG_USB_MUSB_DMA
                 if (g_musb_udc.out_ep[ep_idx].dma_len) {
-                    if (read_count >= g_musb_udc.out_ep[ep_idx].ep_mps) {
-                        /* a full packet that the DMA is about to take */
+                    bool short_pkt = false;
+
+                    if (read_count < g_musb_udc.out_ep[ep_idx].ep_mps) {
+                        /*
+                         * The count of a packet the DMA is just taking out of the FIFO is not
+                         * reliable: let the DMA finish what it can, then look again. Only a packet
+                         * that is still there and still short ends the transfer.
+                         */
+                        usb_musb_dma_settle(ep_idx, false);
+                        if (HWREGB(USB_RXCSRL_BASE(ep_idx)) & USB_RXCSRL1_RXRDY) {
+                            read_count = HWREGH(USB_RXCOUNT_BASE(ep_idx));
+                            short_pkt = read_count < g_musb_udc.out_ep[ep_idx].ep_mps;
+                        }
+                    }
+                    if (!short_pkt) {
                         rxis &= ~(1 << ep_idx);
                         ep_idx++;
                         continue;
