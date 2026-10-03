@@ -1,0 +1,18 @@
+import os
+from building import *
+
+cwd = GetCurrentDir()
+src = []
+for sub in ['core', 'api', 'display-engine', 'display-engine/modules', 'display-engine/soc', 'encoder', 'encoder/rgb',
+            'encoder/lvds', 'encoder/dsi', 'panel', 'phy', 'tcon', 'soc', 'backlight', 'osal']:
+    src += Glob(os.path.join(sub, '*.c'))
+src += ['ofw_graph.c', 'display_rt.c']
+CPPPATH = [cwd, os.path.join(cwd, 'include')]
+CPPDEFINES = ['CONFIG_DISPLAY_SOC_SUN252IW2', 'CONFIG_DISPLAY_DE', 'CONFIG_DISPLAY_DE_WRITEBACK',
+              'CONFIG_DISPLAY_TCON_LCD', 'CONFIG_DISPLAY_ENCODER_RGB', 'CONFIG_DISPLAY_ENCODER_LVDS',
+              'CONFIG_DISPLAY_ENCODER_DSI', 'CONFIG_DISPLAY_COMBO_DPHY', 'CONFIG_DISPLAY_PANEL_SIMPLE',
+              'CONFIG_DISPLAY_PANEL_SPI_INIT', 'CONFIG_DISPLAY_PANEL_DSI', 'CONFIG_DISPLAY_BACKLIGHT_GPIO',
+              'CONFIG_DISPLAY_BACKLIGHT_PWM']
+group = DefineGroup('Display', src, depend = [''], CPPPATH = CPPPATH, CPPDEFINES = CPPDEFINES,
+                    LOCAL_CFLAGS = ' -Wno-unused-parameter -Wno-sign-compare -Wno-missing-field-initializers -Wno-unused-function')
+Return('group')
