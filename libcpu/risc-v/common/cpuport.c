@@ -55,6 +55,9 @@ rt_uint8_t *rt_hw_stack_init(void       *tentry,
     frame->ra      = (rt_ubase_t)texit;
     frame->a0      = (rt_ubase_t)parameter;
     frame->epc     = (rt_ubase_t)tentry;
+#ifdef ARCH_RISCV_FPU
+    ((rt_uint32_t *)frame->fcsr)[0] = 0; /* round to nearest, no flags */
+#endif
 
     /* force to machine mode(MPP=11) and set MPIE to 1 */
 #ifdef ARCH_RISCV_FPU

@@ -64,6 +64,17 @@ typedef union {
 #define FREGBYTES               4
 #define rv_floatreg_t           rt_int32_t
 #endif
+/* f0-f31 followed by fcsr, padded to keep the stack 16 byte aligned */
+#define FPU_FRAMESIZE           (32 * FREGBYTES + 16)
+#define FPU_FCSR_OFFSET         (32 * FREGBYTES)
+#endif
+
+#ifndef __ASSEMBLY__
+/* hint to the core that the caller is spinning */
+rt_inline void rt_hw_cpu_relax(void)
+{
+    __asm__ volatile ("nop" ::: "memory");
+}
 #endif
 
 #endif

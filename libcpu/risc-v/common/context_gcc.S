@@ -15,6 +15,13 @@
 #define __ASSEMBLY__
 #include "cpuport.h"
 
+#ifndef __riscv_32e
+#define INTFRAME_BYTES (32 * REGBYTES)
+#else
+#define INTFRAME_BYTES (16 * REGBYTES)
+#endif
+
+
 #ifdef RT_USING_SMP
 #define rt_hw_interrupt_disable rt_hw_local_irq_disable
 #define rt_hw_interrupt_enable  rt_hw_local_irq_enable
@@ -92,7 +99,7 @@ rt_hw_context_switch:
      *     x(i)        -> sp(i-4)
      */
 #ifdef ARCH_RISCV_FPU
-    addi    sp, sp, -32 * FREGBYTES
+    addi    sp, sp, -FPU_FRAMESIZE
 
     FSTORE  f0, 0 * FREGBYTES(sp)
     FSTORE  f1, 1 * FREGBYTES(sp)
@@ -176,6 +183,11 @@ save_mpie:
     STORE x30, 30 * REGBYTES(sp)
     STORE x31, 31 * REGBYTES(sp)
 #endif
+#ifdef ARCH_RISCV_FPU
+    /* fcsr goes into the slot above f31 of this frame */
+    frcsr   t0
+    sw      t0, (INTFRAME_BYTES + FPU_FCSR_OFFSET)(sp)
+#endif
     /* restore to thread context
      * sp(0) -> epc;
      * sp(1) -> ra;
@@ -244,6 +256,10 @@ rt_hw_context_switch_exit:
     LOAD a0,   2 * REGBYTES(sp)
     csrs mstatus, a0
 
+#ifdef ARCH_RISCV_FPU
+    lw      t0, (INTFRAME_BYTES + FPU_FCSR_OFFSET)(sp)
+    fscsr   t0
+#endif
     LOAD x4,   4 * REGBYTES(sp)
     LOAD x5,   5 * REGBYTES(sp)
     LOAD x6,   6 * REGBYTES(sp)
@@ -313,7 +329,7 @@ rt_hw_context_switch_exit:
     FLOAD   f30, 30 * FREGBYTES(sp)
     FLOAD   f31, 31 * FREGBYTES(sp)
 
-    addi    sp, sp, 32 * FREGBYTES
+    addi    sp, sp, FPU_FRAMESIZE
 #endif
 
     mret

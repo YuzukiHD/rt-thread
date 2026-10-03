@@ -12,6 +12,13 @@
 #define __ASSEMBLY__
 #include "cpuport.h"
 
+#ifndef __riscv_32e
+#define INTFRAME_BYTES (32 * REGBYTES)
+#else
+#define INTFRAME_BYTES (16 * REGBYTES)
+#endif
+
+
     .section .text.entry, "ax"
 #if defined(SOC_SERIES_GD32VF103V)
     .align  6
@@ -23,7 +30,7 @@
 SW_handler:
     csrci mstatus, 0x8
 #ifdef ARCH_RISCV_FPU
-    addi    sp, sp, -32 * FREGBYTES
+    addi    sp, sp, -FPU_FRAMESIZE
     FSTORE  f0, 0 * FREGBYTES(sp)
     FSTORE  f1, 1 * FREGBYTES(sp)
     FSTORE  f2, 2 * FREGBYTES(sp)
@@ -97,6 +104,11 @@ SW_handler:
     STORE x30, 30 * REGBYTES(sp)
     STORE x31, 31 * REGBYTES(sp)
 #endif
+#ifdef ARCH_RISCV_FPU
+    /* fcsr goes into the slot above f31 of this frame */
+    frcsr   t0
+    sw      t0, (INTFRAME_BYTES + FPU_FCSR_OFFSET)(sp)
+#endif
     /* switch to interrupt stack */
     csrrw sp,mscratch,sp
     /* interrupt handle */
@@ -144,6 +156,10 @@ SW_handler:
     LOAD  t0,   2 * REGBYTES(sp)
     csrs  mstatus, t0
 
+#ifdef ARCH_RISCV_FPU
+    lw      t0, (INTFRAME_BYTES + FPU_FCSR_OFFSET)(sp)
+    fscsr   t0
+#endif
     LOAD  x4,   4 * REGBYTES(sp)
     LOAD  x5,   5 * REGBYTES(sp)
     LOAD  x6,   6 * REGBYTES(sp)
@@ -213,7 +229,7 @@ SW_handler:
     FLOAD   f30, 30 * FREGBYTES(sp)
     FLOAD   f31, 31 * FREGBYTES(sp)
 
-    addi    sp, sp, 32 * FREGBYTES
+    addi    sp, sp, FPU_FRAMESIZE
 #endif
     mret
 
@@ -224,7 +240,7 @@ SW_handler:
   .global trap_entry
 trap_entry:
 #ifdef ARCH_RISCV_FPU
-    addi    sp, sp, -32 * FREGBYTES
+    addi    sp, sp, -FPU_FRAMESIZE
 
     FSTORE  f0, 0 * FREGBYTES(sp)
     FSTORE  f1, 1 * FREGBYTES(sp)
@@ -304,6 +320,11 @@ trap_entry:
     STORE x29, 29 * REGBYTES(sp)
     STORE x30, 30 * REGBYTES(sp)
     STORE x31, 31 * REGBYTES(sp)
+#endif
+#ifdef ARCH_RISCV_FPU
+    /* fcsr goes into the slot above f31 of this frame */
+    frcsr   t0
+    sw      t0, (INTFRAME_BYTES + FPU_FCSR_OFFSET)(sp)
 #endif
 
     /* switch to interrupt stack */

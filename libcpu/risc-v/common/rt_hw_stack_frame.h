@@ -82,6 +82,7 @@ typedef struct rt_hw_stack_frame
     rv_floatreg_t f29;     /* f29 */
     rv_floatreg_t f30;     /* f30 */
     rv_floatreg_t f31;     /* f31 */
+    rv_floatreg_t fcsr[16 / sizeof(rv_floatreg_t)]; /* fcsr, padding */
 #endif
 }rt_hw_stack_frame_t;
 
