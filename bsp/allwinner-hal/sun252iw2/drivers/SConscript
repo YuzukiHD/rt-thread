@@ -46,7 +46,8 @@ cherryusb = os.path.join(cwd, '..', '..', '..', '..', 'components', 'drivers', '
 CPPPATH += [os.path.join(cherryusb, 'common'), os.path.join(cherryusb, 'core'), os.path.join(cherryusb, 'osal'),
             os.path.join(cherryusb, 'port', 'ehci'), os.path.join(cherryusb, 'port', 'ohci'),
             os.path.join(cherryusb, 'port', 'musb'), os.path.join(cherryusb, 'class', 'hub'),
-            os.path.join(cherryusb, 'class', 'cdc'), os.path.join(cherryusb, 'class', 'msc')]
+            os.path.join(cherryusb, 'class', 'cdc'), os.path.join(cherryusb, 'class', 'msc'),
+            os.path.join(cherryusb, 'class', 'vendor', 'display')]
 
 group = DefineGroup('Drivers', src, depend = [''], CPPPATH = CPPPATH, ASFLAGS = ' -I ' + cwd)
 

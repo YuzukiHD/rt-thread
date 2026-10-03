@@ -58,3 +58,16 @@ software (`applications/mp4/aac`) and played by the `audio0` codec; the DAC samp
 are dropped. Measured with a 960x540 30 fps clip: 30.0 fps, 0 dropped, A/V offset within 8 ms. 48000 Hz and 44100 Hz
 sound is played, other rates only show the picture. The heap is 12 MiB (`RT_HW_HEAP_BEGIN`) because the decoder takes
 its frame buffers from it.
+
+## USB second screen (applications/usb_display)
+
+`usb_display_start` makes the OTG port enumerate as a virtual display (VID 303A, PID 2987, product string
+`sun252iw2_R1024x600_Ejpg6_Fps30_Bl500`: name, resolution, JPEG quality 6, 30 fps, 500 KB frame buffer limit). Install the
+Windows driver `modules/lib/cherryusb/tools/display/xfz1986_usb_graphic_250224_rc_sign.exe` on the PC (administrator, the
+driver is test signed); Windows then shows a second monitor that the board displays. The PC sends JPEG frames over a bulk
+endpoint, the video engine decodes them through the motion JPEG stream of `vdec_stream_*` and the picture goes to the video
+plane. The statistics line every 5 s shows frames per second, KB/s and the decode and display time per frame.
+`usb_display_selftest` runs a built-in 320x240 JPEG through the same decode and display path without USB
+(3 ms decode per frame). The port stays a display until the next reboot: `usb_device_start` (CDC) and
+`usb_display_start` exclude each other. After a download with xfel run `usb_reconnect` once so that the PC sees a fresh attach.
+

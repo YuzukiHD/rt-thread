@@ -12,5 +12,6 @@ src += [os.path.join('tests', t) for t in tests]
 
 group = DefineGroup('Applications', src, depend = [''], CPPPATH = CPPPATH)
 group = group + SConscript(os.path.join('mp4', 'SConscript'))
+group = group + SConscript(os.path.join('usb_display', 'SConscript'))
 
 Return('group')
