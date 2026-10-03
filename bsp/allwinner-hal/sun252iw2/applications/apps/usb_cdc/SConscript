@@ -1,0 +1,8 @@
+import os
+from building import *
+
+cwd = GetCurrentDir()
+src = ['usb_cdc.c']
+CPPPATH = [cwd, os.path.join(cwd, '..', '..', '..', 'drivers', 'usb', 'cherryusb')]
+group = DefineGroup('UsbCdc', src, depend = ['RT_CHERRYUSB_DEVICE_CDC_ACM'], CPPPATH = CPPPATH)
+Return('group')

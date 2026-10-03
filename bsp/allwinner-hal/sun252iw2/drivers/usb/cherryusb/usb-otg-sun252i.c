@@ -17,8 +17,21 @@
 #include "usbd_core.h"
 
 #define VEND0       0x43u
-/* VEND0 bit 0: the CPU moves the FIFO data (no DMA) */
-#define VEND0_PIO   (1u << 0)
+/* VEND0 bit 0: the FIFO bus select, set for both the CPU and the DMA (chosen in the endpoint CSR) */
+#define VEND0_BUS   (1u << 0)
+
+/* the DMA engine behind the endpoint FIFOs: one channel per endpoint and direction */
+#define DMA_IRQ_EN      0x500u
+#define DMA_IRQ_STA     0x504u
+#define DMA_CH(ch)      (0x540u + (ch) * 0x10u)
+#define DMA_CFG         0x0u
+#define DMA_ADDR        0x4u
+#define DMA_COUNT       0x8u
+#define DMA_RESIDUAL    0xcu
+#define DMA_CFG_EN      (1u << 31)
+#define DMA_CFG_RX      (1u << 4)
+#define DMA_LEN_MASK    0x1ffffu
+#define DMA_ALIGN       64u
 
 static struct
 {
@@ -40,6 +53,89 @@ static void usbd_isr(int vector, void *param)
     USBD_IRQHandler(0);
 }
 
+#ifdef CONFIG_USB_MUSB_DMA
+static rt_ubase_t dma_buf[8];   /* start of the running transfer of each channel */
+
+static unsigned int dma_ch(uint8_t ep_idx, bool is_in)
+{
+    return ep_idx * 2u + (is_in ? 0u : 1u);
+}
+
+/* strong overrides of the weak hooks of port/musb/usb_dc_musb.c */
+bool usb_musb_dma_start(uint8_t ep_idx, bool is_in, void *buf, uint32_t len, uint16_t mps)
+{
+    unsigned int ch = dma_ch(ep_idx, is_in);
+    rt_ubase_t reg = otg.base + DMA_CH(ch);
+    rt_ubase_t start = (rt_ubase_t)buf & ~(DMA_ALIGN - 1u);
+    rt_size_t size = ((rt_ubase_t)buf + len - start + DMA_ALIGN - 1u) & ~(DMA_ALIGN - 1u);
+
+    if ((HWREG32(reg + DMA_CFG) & DMA_CFG_EN) || len > DMA_LEN_MASK)
+        return false;
+
+    /* the buffer goes through the CPU cache: write it out, or drop stale lines before the DMA fills it */
+    rt_hw_cpu_dcache_ops(RT_HW_CACHE_FLUSH, (void *)start, size);
+    if (!is_in)
+        rt_hw_cpu_dcache_ops(RT_HW_CACHE_INVALIDATE, (void *)start, size);
+
+    dma_buf[ch] = (rt_ubase_t)buf;
+    HWREG32(otg.base + DMA_IRQ_STA) = 1u << ch;
+    HWREG32(otg.base + DMA_IRQ_EN) |= 1u << ch;
+    HWREG32(reg + DMA_ADDR) = (rt_uint32_t)(rt_ubase_t)buf;
+    HWREG32(reg + DMA_COUNT) = len;
+    HWREG32(reg + DMA_CFG) = DMA_CFG_EN | ((rt_uint32_t)(mps & 0x7ffu) << 16) | (is_in ? 0u : DMA_CFG_RX) | ep_idx;
+
+    return true;
+}
+
+bool usb_musb_dma_done(uint8_t ep_idx, bool is_in, uint32_t *bytes)
+{
+    unsigned int ch = dma_ch(ep_idx, is_in);
+    rt_ubase_t reg = otg.base + DMA_CH(ch);
+    rt_uint32_t count;
+
+    if (!(HWREG32(otg.base + DMA_IRQ_STA) & (1u << ch)))
+        return false;
+
+    /* a write of 1 clears the channel alone */
+    HWREG32(otg.base + DMA_IRQ_STA) = 1u << ch;
+    HWREG32(otg.base + DMA_IRQ_EN) &= ~(1u << ch);
+    count = HWREG32(reg + DMA_COUNT) & DMA_LEN_MASK;
+    *bytes = count - (HWREG32(reg + DMA_RESIDUAL) & DMA_LEN_MASK);
+    HWREG32(reg + DMA_CFG) &= ~DMA_CFG_EN;
+
+    if (!is_in)
+    {
+        rt_ubase_t addr = dma_buf[ch];
+        rt_ubase_t start = addr & ~(DMA_ALIGN - 1u);
+
+        rt_hw_cpu_dcache_ops(RT_HW_CACHE_INVALIDATE, (void *)start,
+                             (addr + *bytes - start + DMA_ALIGN - 1u) & ~(DMA_ALIGN - 1u));
+    }
+
+    return true;
+}
+
+uint32_t usb_musb_dma_abort(uint8_t ep_idx, bool is_in)
+{
+    unsigned int ch = dma_ch(ep_idx, is_in);
+    rt_ubase_t reg = otg.base + DMA_CH(ch);
+    rt_uint32_t bytes = (HWREG32(reg + DMA_COUNT) & DMA_LEN_MASK) - (HWREG32(reg + DMA_RESIDUAL) & DMA_LEN_MASK);
+
+    HWREG32(reg + DMA_CFG) &= ~DMA_CFG_EN;
+    HWREG32(otg.base + DMA_IRQ_EN) &= ~(1u << ch);
+    HWREG32(otg.base + DMA_IRQ_STA) = 1u << ch;
+    if (!is_in && bytes)
+    {
+        rt_ubase_t start = dma_buf[ch] & ~(DMA_ALIGN - 1u);
+
+        rt_hw_cpu_dcache_ops(RT_HW_CACHE_INVALIDATE, (void *)start,
+                             (dma_buf[ch] + bytes - start + DMA_ALIGN - 1u) & ~(DMA_ALIGN - 1u));
+    }
+
+    return bytes;
+}
+#endif
+
 /* strong override of the weak one of port/musb/usb_dc_musb.c */
 void usb_dc_low_level_init(void)
 {
@@ -49,7 +145,11 @@ void usb_dc_low_level_init(void)
     rt_clk_prepare_enable(otg.clk);
     rt_reset_control_deassert(otg.rst);
 
-    HWREG8(otg.base + VEND0) = VEND0_PIO;
+    HWREG8(otg.base + VEND0) = VEND0_BUS;
+#ifdef CONFIG_USB_MUSB_DMA
+    HWREG32(otg.base + DMA_IRQ_EN) = 0;
+    HWREG32(otg.base + DMA_IRQ_STA) = 0xffffffffu;
+#endif
 
     rt_pic_attach_irq(otg.irq, usbd_isr, RT_NULL, "usbd", 0);
     rt_pic_irq_unmask(otg.irq);

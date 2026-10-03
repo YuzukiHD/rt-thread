@@ -54,6 +54,10 @@ static void usb_regs(void)
                HWREG8(base + 0x40), HWREG8(base + 0x60), HWREG8(base + 0x0a), HWREG8(base + 0x0e),
                HWREG8(base + 0x98), HWREG8(base + 0x43));
     rt_kprintf("usb: ISCR %08x PHYCTL %08x\n", HWREG32(base + 0x400), HWREG32(base + 0x410));
+    rt_kprintf("usb: dma en %08x sta %08x\n", HWREG32(base + 0x500), HWREG32(base + 0x504));
+    for (int ch = 2; ch < 6; ch++)
+        rt_kprintf("usb: dma ch%d cfg %08x addr %08x cnt %08x res %08x\n", ch, HWREG32(base + 0x540 + ch * 16),
+                   HWREG32(base + 0x544 + ch * 16), HWREG32(base + 0x548 + ch * 16), HWREG32(base + 0x54c + ch * 16));
 }
 MSH_CMD_EXPORT(usb_regs, dump the MUSB and PHY glue registers);
 

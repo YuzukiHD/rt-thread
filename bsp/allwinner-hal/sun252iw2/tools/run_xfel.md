@@ -59,6 +59,23 @@ are dropped. Measured with a 960x540 30 fps clip: 30.0 fps, 0 dropped, A/V offse
 sound is played, other rates only show the picture. The heap is 12 MiB (`RT_HW_HEAP_BEGIN`) because the decoder takes
 its frame buffers from it.
 
+## USB device performance (applications/apps/usb_cdc)
+
+The bulk endpoints (all but EP0) are moved by the OTG's internal DMA (`CONFIG_USB_MUSB_DMA`; whole packets by DMA,
+short packets and tails by the CPU, the DMA ends with an interrupt on the shared OTG line). VEND0 bit 0 stays set in
+both modes, the CPU/DMA choice is made in the endpoint CSR. Measured on the CDC ACM port with 16 KiB transfers and
+a pattern check of both directions (0 errors, odd write sizes included):
+
+| | PIO | DMA |
+|---|---|---|
+| OUT (host to board) | 14.2 MB/s, 49% CPU | 26.3 MB/s, 7% CPU |
+| IN (board to host) | 22 MB/s, 39% CPU | 23.9 MB/s, 6% CPU |
+
+The rates are limited by the Windows serial driver. Commands: `usb_bench_cpu` (idle rate, run it first and with no
+traffic), `usb_bench_src 1|0` (IN stream), `usb_bench_check 1|0` (verify the OUT pattern, costs CPU: turn it off for
+the CPU figure), `usb_bench_stat` (rates and load over the last burst); host side `usbbench.ps1 -Mode out|in
+-Seconds N [-Odd 1000]` on the PC. `usb_regs` also dumps the DMA channels.
+
 ## USB second screen (applications/apps/usb_display)
 
 `usb_display_start` makes the OTG port enumerate as a virtual display (VID 303A, PID 2987, product string

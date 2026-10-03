@@ -42,6 +42,8 @@
 #define CONFIG_USBDEV_MSC_MAX_BUFSIZE 512
 #define CONFIG_USB_MUSB_EP_NUM 4
 #define CONFIG_USB_MUSB_SUNXI
+/* the endpoint FIFOs are moved by the OTG DMA engine (undefine for CPU copies) */
+#define CONFIG_USB_MUSB_DMA
 
 /* ---------------- host (EHCI + OHCI) ---------------- */
 #define CONFIG_USBHOST_MAX_RHPORTS 1
