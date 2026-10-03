@@ -179,3 +179,57 @@ static int mbus_masters(int argc, char **argv)
     return 0;
 }
 MSH_CMD_EXPORT(mbus_masters, priority and limit registers of the 40 bus masters);
+
+/* mbus_set <master> <priority 0..3> [limit in MB/s, 0: none] */
+static int mbus_set(int argc, char **argv)
+{
+    rt_uint32_t master;
+
+    if (argc < 3)
+    {
+        rt_kprintf("usage: mbus_set <master> <priority 0..3> [limit MB/s]\n");
+        return -1;
+    }
+    master = atoi(argv[1]);
+    if (master >= 40u || mbus_set_priority(master, atoi(argv[2])) != 0)
+        return -1;
+    mbus_set_limit(master, argc > 3 ? atoi(argv[3]) : 0);
+
+    return 0;
+}
+MSH_CMD_EXPORT(mbus_set, set the priority and bandwidth limit of a bus master);
+
+/*
+ * mbus_find <traffic counter>: with a load running, limit every master to 50 MB/s in turn; the one
+ * whose limit drops the traffic of the counter (see mbus_stats for the numbers) is the master of that unit.
+ */
+static int mbus_find(int argc, char **argv)
+{
+    rt_uint32_t counter = argc > 1 ? atoi(argv[1]) : 0, m, before, base, now, old;
+
+    if (counter >= MBUS_PMU_COUNT)
+        return -1;
+    before = mbus_traffic(counter);
+    rt_thread_mdelay(300);
+    base = mbus_traffic(counter) - before;
+    rt_kprintf("mbus_find: counter %u (%s) moves %u KB in 300 ms without limits\n", counter, mbus_pmu_name(counter),
+               base / 1024);
+    for (m = 0; m < 40u; m++)
+    {
+        if (m == 39u)       /* the CPU: limiting it stalls this command */
+            continue;
+        mbus_get_limit(m, &old);
+        mbus_set_limit(m, 50);
+        rt_thread_mdelay(50);
+        before = mbus_traffic(counter);
+        rt_thread_mdelay(300);
+        now = mbus_traffic(counter) - before;
+        mbus_set_limit(m, old);
+        if (now * 2u < base)
+            rt_kprintf("mbus_find: master %u limits it: %u KB in 300 ms with 50 MB/s\n", m, now / 1024);
+    }
+    rt_kprintf("mbus_find: done\n");
+
+    return 0;
+}
+MSH_CMD_EXPORT(mbus_find, find the bus master of a unit: mbus_find <traffic counter>);
