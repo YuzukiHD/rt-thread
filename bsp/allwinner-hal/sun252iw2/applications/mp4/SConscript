@@ -1,0 +1,12 @@
+import os
+from building import *
+
+cwd = GetCurrentDir()
+src = ['mp4.c', 'player.c'] + Glob('aac/*.c')
+CPPPATH = [cwd, os.path.join(cwd, 'aac'), os.path.join(cwd, '..', '..', 'drivers', 'vdec'),
+           os.path.join(cwd, '..', '..', 'drivers', 'display'), os.path.join(cwd, '..', '..', 'drivers', 'audio'),
+           os.path.join(cwd, '..', '..', 'drivers', 'include')]
+group = DefineGroup('Mp4', src, depend = [''], CPPPATH = CPPPATH,
+                    LOCAL_CFLAGS = ' -std=gnu99 -Wno-shadow -Wno-unused-variable -Wno-unused-but-set-variable'
+                                   ' -Wno-implicit-fallthrough -Wno-parentheses -Wno-unused-parameter -Wno-sign-compare')
+Return('group')
