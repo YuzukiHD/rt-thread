@@ -10,6 +10,7 @@
 
 #include <rtthread.h>
 #include <rtdevice.h>
+#include <drivers/clock_time.h>
 
 #include "usb-glue-sun252i.h"
 #include "usb-phy-sun252i.h"
@@ -128,26 +129,25 @@ bool usb_musb_dma_done(uint8_t ep_idx, bool is_in, uint32_t *bytes)
  * Returns once the residual count has not moved for 50 us (a DMA waiting for the memory bus can
  * pause for a few us; one that has nothing left to take stays still), or after 1 ms.
  */
-#define MTIME_LO        (*(volatile rt_uint32_t *)0x1400BFF8u)
-#define MTIME_PER_US    24u
-
 static rt_uint32_t dma_drain(unsigned int ch, rt_uint32_t count)
 {
     rt_ubase_t reg = otg.base + DMA_CH(ch);
-    rt_uint32_t begin = MTIME_LO, since = begin, now, res, last = ~0u;
+    rt_uint64_t per_us = rt_clock_time_get_freq() / 1000000u;
+    rt_uint64_t begin = rt_clock_time_get_counter(), since = begin, now;
+    rt_uint32_t res, last = ~0u;
 
     for (;;)
     {
         res = HWREG32(reg + DMA_RESIDUAL) & DMA_LEN_MASK;
-        now = MTIME_LO;
+        now = rt_clock_time_get_counter();
         if (res != last)
         {
             last = res;
             since = now;
         }
-        if ((now - since) >= 50u * MTIME_PER_US && (count - res) % dma_mps[ch] == 0)
+        if ((now - since) >= 50u * per_us && (count - res) % dma_mps[ch] == 0)
             break;
-        if ((now - begin) >= 1000u * MTIME_PER_US)
+        if ((now - begin) >= 1000u * per_us)
             break;
     }
 

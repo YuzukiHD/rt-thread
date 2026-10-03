@@ -63,6 +63,7 @@
 
 /* device model with a builtin device tree */
 #define RT_USING_DM
+#define RT_USING_CLOCK_TIME
 #define RT_USING_ADT
 #define RT_USING_ADT_REF
 #define RT_USING_ADT_BITMAP
