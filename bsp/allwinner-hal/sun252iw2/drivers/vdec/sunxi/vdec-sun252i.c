@@ -44,6 +44,7 @@ struct vdec_stream {
 	enum vdec_format format;
 	bool eos;
 	bool jpeg;	/* motion JPEG: every feed is one whole picture */
+	bool no_cache_ops;	/* the CPU does not read the pictures */
 	int held;
 };
 
@@ -161,7 +162,9 @@ static struct vdec_sunxi_frame *make_frame(struct ve_decoder *dec, struct ve_pic
 		pic->top_offset, pic->right_offset, pic->bottom_offset, pic->buf_size);
 
 	/* the engine wrote the picture behind the cache */
-	ve_mem_get_ops()->flush_cache(pic->data0, pic->buf_size);
+	if (stream == NULL || !stream->no_cache_ops) {
+		ve_mem_get_ops()->flush_cache(pic->data0, pic->buf_size);
+	}
 
 	memset(frame, 0, sizeof(*frame));
 	frame->format = format;
@@ -338,6 +341,7 @@ int vdec_stream_open(const struct vdec_stream_config *config,
 	}
 
 	st->jpeg = config->codec == VDEC_CODEC_JPEG;
+	st->no_cache_ops = config->no_cache_ops;
 	info.codec_format = st->jpeg ? VE_CODEC_MJPEG : VE_CODEC_H264;
 	if (st->jpeg) {
 		info.width = config->width;
@@ -535,3 +539,21 @@ static struct rt_platform_driver vdec_driver =
 	.probe = vdec_probe,
 };
 RT_PLATFORM_DRIVER_EXPORT(vdec_driver);
+
+int vdec_set_clock_hz(uint32_t hz)
+{
+	struct rt_clk *c = ve_glue_clk(GLUE_CLK_VE);
+
+	if (c == NULL || rt_clk_set_rate(c, hz) != RT_EOK) {
+		return -EIO;
+	}
+
+	return (int)rt_clk_get_rate(c);
+}
+
+uint32_t vdec_clock_hz(void)
+{
+	struct rt_clk *c = ve_glue_clk(GLUE_CLK_VE);
+
+	return c != NULL ? (uint32_t)rt_clk_get_rate(c) : 0U;
+}

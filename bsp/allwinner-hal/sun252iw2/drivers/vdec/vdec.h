@@ -75,6 +75,12 @@ struct vdec_stream_config {
 	 * the largest group of NAL units handed to vdec_stream_feed() in one call.
 	 */
 	size_t buffer_size;
+	/**
+	 * The frames are not read by the CPU (the display engine, the 2D accelerator or nothing reads
+	 * them): skip the cache maintenance of the picture memory, which takes about as long as the
+	 * decoding itself at 720p.
+	 */
+	bool no_cache_ops;
 	/** Picture size, JPEG streams only (the engine wants it up front) */
 	uint16_t width;
 	uint16_t height;
@@ -156,6 +162,16 @@ int vdec_stream_feed(struct vdec_stream *stream, const void *data, size_t len, i
  * @retval -EIO the hardware failed
  */
 int vdec_stream_get_frame(struct vdec_stream *stream, struct vdec_frame *frame);
+
+
+/**
+ * @brief Clock of the video engine
+ *
+ * The engine library picks a clock when a stream is opened; a rate set after that holds until the
+ * next open. vdec_set_clock_hz() returns the rate set (negative errno on failure).
+ */
+int vdec_set_clock_hz(uint32_t hz);
+uint32_t vdec_clock_hz(void);
 
 
 /**
