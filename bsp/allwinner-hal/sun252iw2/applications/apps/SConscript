@@ -1,0 +1,9 @@
+import os
+from building import *
+
+# the applications of the board, one directory each
+group = []
+for d in ['mp4', 'usb_display']:
+    group = group + SConscript(os.path.join(d, 'SConscript'))
+
+Return('group')

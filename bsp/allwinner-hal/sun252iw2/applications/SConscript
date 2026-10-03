@@ -11,7 +11,6 @@ tests = ['test_kernel.c', 'test_fpu.c', 'test_gpio.c', 'test_dma.c', 'test_wdt.c
 src += [os.path.join('tests', t) for t in tests]
 
 group = DefineGroup('Applications', src, depend = [''], CPPPATH = CPPPATH)
-group = group + SConscript(os.path.join('mp4', 'SConscript'))
-group = group + SConscript(os.path.join('usb_display', 'SConscript'))
+group = group + SConscript(os.path.join('apps', 'SConscript'))
 
 Return('group')

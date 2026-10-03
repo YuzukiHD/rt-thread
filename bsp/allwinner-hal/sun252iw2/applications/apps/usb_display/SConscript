@@ -1,0 +1,9 @@
+import os
+from building import *
+
+cwd = GetCurrentDir()
+src = ['usb_display.c']
+CPPPATH = [cwd, os.path.join(cwd, '..', '..', 'tests'), os.path.join(cwd, '..', '..', '..', 'drivers', 'vdec'),
+           os.path.join(cwd, '..', '..', '..', 'drivers', 'display'), os.path.join(cwd, '..', '..', '..', 'drivers', 'usb', 'cherryusb')]
+group = DefineGroup('UsbDisplay', src, depend = ['RT_CHERRYUSB_DEVICE_DISPLAY'], CPPPATH = CPPPATH)
+Return('group')

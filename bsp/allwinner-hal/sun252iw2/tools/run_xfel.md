@@ -50,16 +50,16 @@ Console: UART3 (PE08/PE09), 115200 8N1 (`chosen/stdout-path`). Expected: RT-Thre
 `test_all` runs the self contained ones in turn. The device tree is the only place that names pins, bases, interrupts,
 clocks and resets; `drivers/clock_control/ccu-sun252i.c` is the one place that knows the clock registers.
 
-## MP4 player (applications/mp4)
+## MP4 player (applications/apps/mp4)
 
 `mp4_play <file>` plays a file of the SD card (FAT, mounted on `/` on first use), `mp4_stop` stops it. The H.264 track
 is decoded by the video engine and shown on the video plane of the display (`lcd_show_yuv`), the AAC track is decoded in
-software (`applications/mp4/aac`) and played by the `audio0` codec; the DAC sample counter is the clock, late pictures
+software (`applications/apps/mp4/aac`) and played by the `audio0` codec; the DAC sample counter is the clock, late pictures
 are dropped. Measured with a 960x540 30 fps clip: 30.0 fps, 0 dropped, A/V offset within 8 ms. 48000 Hz and 44100 Hz
 sound is played, other rates only show the picture. The heap is 12 MiB (`RT_HW_HEAP_BEGIN`) because the decoder takes
 its frame buffers from it.
 
-## USB second screen (applications/usb_display)
+## USB second screen (applications/apps/usb_display)
 
 `usb_display_start` makes the OTG port enumerate as a virtual display (VID 303A, PID 2987, product string
 `sun252iw2_R1024x600_Ejpg6_Fps30_Bl500`: name, resolution, JPEG quality 6, 30 fps, 500 KB frame buffer limit). Install the
