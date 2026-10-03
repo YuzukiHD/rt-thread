@@ -75,6 +75,9 @@ struct vdec_stream_config {
 	 * the largest group of NAL units handed to vdec_stream_feed() in one call.
 	 */
 	size_t buffer_size;
+	/** Picture size, JPEG streams only (the engine wants it up front) */
+	uint16_t width;
+	uint16_t height;
 };
 
 

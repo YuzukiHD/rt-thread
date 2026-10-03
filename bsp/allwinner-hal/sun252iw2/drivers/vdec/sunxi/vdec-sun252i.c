@@ -43,6 +43,7 @@ struct vdec_stream {
 	struct ve_decoder *decoder;
 	enum vdec_format format;
 	bool eos;
+	bool jpeg;	/* motion JPEG: every feed is one whole picture */
 	int held;
 };
 
@@ -316,9 +317,12 @@ int vdec_stream_open(const struct vdec_stream_config *config,
 	struct ve_vconfig cfg = {0};
 	struct vdec_stream *st;
 
-	if (config->codec != VDEC_CODEC_H264 ||
+	if ((config->codec != VDEC_CODEC_H264 && config->codec != VDEC_CODEC_JPEG) ||
 	    (config->format != VDEC_FORMAT_NV12 && config->format != VDEC_FORMAT_NV21)) {
 		return -ENOTSUP;
+	}
+	if (config->codec == VDEC_CODEC_JPEG && (!config->width || !config->height)) {
+		return -EINVAL;
 	}
 
 	rt_sem_take(&claim, RT_WAITING_FOREVER);
@@ -333,7 +337,13 @@ int vdec_stream_open(const struct vdec_stream_config *config,
 		goto err;
 	}
 
-	info.codec_format = VE_CODEC_H264;
+	st->jpeg = config->codec == VDEC_CODEC_JPEG;
+	info.codec_format = st->jpeg ? VE_CODEC_MJPEG : VE_CODEC_H264;
+	if (st->jpeg) {
+		info.width = config->width;
+		info.height = config->height;
+		cfg.align_stride = 16;
+	}
 	cfg.output_pixel_format = config->format == VDEC_FORMAT_NV21 ? VE_PIX_NV21 : VE_PIX_NV12;
 	cfg.display_holding_fb_num = 3;
 	cfg.disp_error_frame = 1;
@@ -372,6 +382,34 @@ int vdec_stream_feed(struct vdec_stream *st,
 	size_t taken = 0;
 
 	*consumed = 0;
+	if (st->jpeg) {
+		struct ve_stream_data sd = {0};
+		char *buf, *ring;
+		int buf_len, ring_len;
+
+		if (ve_decoder_request_stream_buffer(st->decoder, len, &buf, &buf_len, &ring, &ring_len,
+						     0) != 0 || buf_len + ring_len < (int)len) {
+			return -EAGAIN;
+		}
+		if (buf_len >= (int)len) {
+			memcpy(buf, data, len);
+		} else {
+			memcpy(buf, data, buf_len);
+			memcpy(ring, p + buf_len, len - buf_len);
+		}
+		sd.data = buf;
+		sd.length = len;
+		sd.pts = pts;
+		sd.is_first_part = 1;
+		sd.is_last_part = 1;
+		sd.valid = 1;
+		if (ve_decoder_submit_stream(st->decoder, &sd, 0) != 0) {
+			return -EIO;
+		}
+		*consumed = len;
+
+		return 0;
+	}
 	nal = next_start_code(p, end);
 	if (nal != p) {
 		return -EINVAL;
