@@ -11,8 +11,9 @@
 #define DBG_LVL DBG_INFO
 #include <rtdbg.h>
 
-#define LOG_ERR LOG_E
-#define LOG_WRN LOG_W
+/* errors and warnings are always printed, the rest follows the debug configuration */
+#define LOG_ERR(fmt, ...) rt_kprintf("[vdec E] " fmt "\n", ##__VA_ARGS__)
+#define LOG_WRN(fmt, ...) rt_kprintf("[vdec W] " fmt "\n", ##__VA_ARGS__)
 #define LOG_INF LOG_I
 #define LOG_DBG LOG_D
 

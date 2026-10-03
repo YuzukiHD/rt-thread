@@ -7,7 +7,7 @@ src = Glob('sunxi/*.c') + Glob('sunxi/glue/*.c')
 CPPPATH = [cwd, sun, os.path.join(sun, 'glue'), os.path.join(cwd, '..', 'include')]
 CPPDEFINES = ['CONFIG_VDEC_SUNXI_JPEG=1', 'CONFIG_VDEC_SUNXI_PNG=1', 'CONFIG_VDEC_SUNXI_H264=1',
               'CONFIG_VDEC_SUNXI_CLOCK_MHZ=300', 'CONFIG_VDEC_SUNXI_STREAM_BUFFER_KB=256',
-              'CONFIG_VDEC_SUNXI_MAX_MEMORY_KB=4096', 'CONFIG_VDEC_SUNXI_MEM_ALIGN=4096']
+              'CONFIG_VDEC_SUNXI_MAX_MEMORY_KB=9216', 'CONFIG_VDEC_SUNXI_MEM_ALIGN=4096']
 # the decoder archive lists some members twice: link it as a plain archive; it prints through printf()
 group = DefineGroup('Vdec', src, depend = [''], CPPPATH = CPPPATH, CPPDEFINES = CPPDEFINES,
                     LIBS = [':libcedarc'], LIBPATH = [os.path.join(cwd, 'lib')],
