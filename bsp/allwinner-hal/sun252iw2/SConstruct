@@ -37,6 +37,12 @@ else:
 SDK_LIB = libraries_path_prefix
 Export('SDK_LIB')
 
+# the build profile of the board: SUN252I_BOARD=usbdisp builds the trimmed image of the USB second screen
+# (no SD card, file system, audio, USB host, MP4 player...); rtconfig.h includes the result
+profile = '#define BSP_PROFILE_USBDISP\n' if os.environ.get('SUN252I_BOARD') == 'usbdisp' else '/* the full image */\n'
+if not os.path.exists('profile.h') or open('profile.h').read() != profile:
+    open('profile.h', 'w').write(profile)
+
 # prepare building environment
 objs = PrepareBuilding(env, RTT_ROOT, has_libcpu = False)
 

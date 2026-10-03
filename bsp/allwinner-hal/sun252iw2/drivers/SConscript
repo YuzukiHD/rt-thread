@@ -12,18 +12,18 @@ drivers = [
     ('pinctrl/pinctrl-sun252i.c', ''),
     ('pinctrl/jtag-sun252i.c', ''),
     ('dma/dma-sun252i.c', ''),
-    ('watchdog/watchdog-sun252i.c', ''),
+    ('watchdog/watchdog-sun252i.c', 'RT_USING_WDT'),
     ('i2c/i2c-sun252i.c', ''),
-    ('spi/spi-sun252i.c', ''),
+    ('spi/spi-sun252i.c', 'RT_USING_SPI'),
     ('pwm/pwm-sun252i.c', ''),
     ('pwm/pwm-bl-sun252i.c', ''),
-    ('adc/adc-sun252i.c', ''),
-    ('sdio/sdio-sun252i.c', ''),
-    ('mbus/mbus-sun252i.c', ''),
-    ('audio/codec-sun252i.c', ''),
-    ('audio/i2s-sun252i.c', ''),
-    ('audio/owa-sun252i.c', ''),
-    ('mipi_dbi/mipi-dbi-sun252i.c', ''),
+    ('adc/adc-sun252i.c', 'RT_USING_ADC'),
+    ('sdio/sdio-sun252i.c', 'RT_USING_SDIO'),
+    ('mbus/mbus-sun252i.c', 'BSP_USING_MBUS'),
+    ('audio/codec-sun252i.c', 'RT_USING_AUDIO'),
+    ('audio/i2s-sun252i.c', 'RT_USING_AUDIO'),
+    ('audio/owa-sun252i.c', 'RT_USING_AUDIO'),
+    ('mipi_dbi/mipi-dbi-sun252i.c', 'BSP_USING_DBI'),
     ('usb/phy/usb-phy-sun252i.c', ''),
     ('usb/cherryusb/usb-otg-sun252i.c', ''),
     ('usb/cherryusb/usb-hci-sun252i.c', 'RT_CHERRYUSB_HOST'),
@@ -54,6 +54,8 @@ group = DefineGroup('Drivers', src, depend = [''], CPPPATH = CPPPATH, ASFLAGS = 
 
 # drivers with a directory of their own
 for d in ['display', 'g2d', 'vdec']:
+    if d == 'g2d' and not GetDepend('BSP_USING_G2D'):
+        continue
     group = group + SConscript(os.path.join(d, 'SConscript'))
 
 Return('group')

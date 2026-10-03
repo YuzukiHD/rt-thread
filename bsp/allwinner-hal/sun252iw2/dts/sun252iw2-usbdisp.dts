@@ -1,0 +1,19 @@
+/*
+ * Copyright (c) 2006-2026, RT-Thread Development Team
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * The EVB as a USB second screen: display, video engine and the USB device port stay; the SD
+ * card, audio, 2D accelerator, MIPI DBI, USB host and the peripherals nobody uses are off. Built
+ * with SUN252I_BOARD=usbdisp (a trimmed image, see rtconfig.h).
+ */
+
+#include "sun252iw2-evb.dts"
+
+&g2d { status = "disabled"; };
+&dbi { status = "disabled"; };
+&mmc0 { status = "disabled"; };
+&usbhci { status = "disabled"; };
+&codec { status = "disabled"; };
+&i2s0 { status = "disabled"; };
+&owa { status = "disabled"; };

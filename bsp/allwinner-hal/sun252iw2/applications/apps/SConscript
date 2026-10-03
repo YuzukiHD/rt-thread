@@ -4,6 +4,8 @@ from building import *
 # the applications of the board, one directory each
 group = []
 for d in ['mp4', 'usb_display', 'usb_cdc']:
+    if (d == 'mp4' and not GetDepend('BSP_USING_MP4')) or (d == 'usb_cdc' and not GetDepend('RT_CHERRYUSB_DEVICE_CDC_ACM')):
+        continue
     group = group + SConscript(os.path.join(d, 'SConscript'))
 
 Return('group')

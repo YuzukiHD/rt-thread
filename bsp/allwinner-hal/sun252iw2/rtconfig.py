@@ -40,7 +40,10 @@ if PLATFORM == 'gcc':
     LFLAGS  = DEVICE + ' -nostartfiles -Wl,--gc-sections,-Map=rtthread.map,-cref,-u,_start -T link.lds' + ' -lsupc++ -Wl,--start-group -lm -lc -lgcc -Wl,--end-group -static'
     CPATH   = ''
     LPATH   = ''
-    if BUILD == 'debug':
+    if os.environ.get('SUN252I_BOARD') == 'usbdisp':
+        # the trimmed USB second screen image is built for size
+        CFLAGS += ' -Os'
+    elif BUILD == 'debug':
         CFLAGS += ' -g -O0'
         AFLAGS += ' -g'
     else:

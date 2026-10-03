@@ -60,7 +60,14 @@ rt_weak int rt_hw_cpu_id(void)
 void rt_hw_board_init(void)
 {
 #ifdef RT_USING_HEAP
+#ifdef BSP_PROFILE_USBDISP
+    /* the trimmed image is small: the heap starts behind it (and the stacks of the linker script) */
+    extern char __stack_end__;
+
+    rt_system_heap_init((void *)RT_ALIGN((rt_ubase_t)&__stack_end__, 4096), (void *)RT_HW_HEAP_END);
+#else
     rt_system_heap_init((void *)RT_HW_HEAP_BEGIN, (void *)RT_HW_HEAP_END);
+#endif
 #endif
 
     /* device tree: the heap must be up before the nodes are built */

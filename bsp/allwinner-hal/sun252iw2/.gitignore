@@ -4,3 +4,4 @@ __pycache__/
 *.map
 *.bin
 link_stacksize.lds
+profile.h

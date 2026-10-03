@@ -2,6 +2,9 @@
 #ifndef __RTCONFIG_H__
 #define __RTCONFIG_H__
 
+/* BSP_PROFILE_USBDISP (SUN252I_BOARD=usbdisp) leaves out everything the USB second screen does not use */
+#include "profile.h"
+
 /* RT-Thread Kernel */
 #define RT_NAME_MAX 16
 #define RT_ALIGN_SIZE 4
@@ -91,19 +94,26 @@
 #define RT_USING_PIN
 
 #define RT_USING_I2C
+#ifndef BSP_PROFILE_USBDISP
 #define RT_USING_SPI
+#endif
 #define RT_USING_PWM
 #define RT_USING_CHERRYUSB
 #define RT_CHERRYUSB_DEVICE
 #define RT_CHERRYUSB_DEVICE_MUSB_SUNXI
 #define RT_CHERRYUSB_DEVICE_SPEED_HS
+#ifndef BSP_PROFILE_USBDISP
 #define RT_CHERRYUSB_DEVICE_CDC_ACM
+#endif
 #define RT_CHERRYUSB_DEVICE_DISPLAY
 #define RT_CHERRYUSB_DEVICE_HID
+#ifndef BSP_PROFILE_USBDISP
 #define RT_CHERRYUSB_HOST
 #define RT_CHERRYUSB_HOST_EHCI_CUSTOM
 #define RT_CHERRYUSB_HOST_MSC
 #define RT_CHERRYUSB_HOST_CDC_ACM
+#endif
+#ifndef BSP_PROFILE_USBDISP
 #define RT_USING_AUDIO
 #define RT_AUDIO_REPLAY_MP_BLOCK_SIZE 4096
 #define RT_AUDIO_REPLAY_MP_BLOCK_COUNT 4
@@ -137,6 +147,11 @@
 #define RT_USING_DFS_DEVFS
 #define RT_USING_ADC
 #define RT_USING_WDT
+#define BSP_USING_MP4
+#define BSP_USING_G2D
+#define BSP_USING_MBUS
+#define BSP_USING_DBI
+#endif
 
 /* sun252iw2 SoC */
 #define ARCH_RISCV

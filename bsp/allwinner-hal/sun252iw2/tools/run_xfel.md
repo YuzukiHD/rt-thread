@@ -59,7 +59,12 @@ Both are off by default. `#define BSP_USING_TESTS` in `rtconfig.h` builds the `t
 
 The board is chosen with the environment variable `SUN252I_BOARD` when building: `evb` (default, SD card slot), `evb-jtag` (the
 pins of the slot as JTAG port), `evb-h264` (display, G2D, DBI, USB, audio and PWM off: the 16 MB PSRAM is left to the video
-engine, the 1024x600 frame buffer alone is 2.4 MB) and `yuzukineko`.
+engine, the 1024x600 frame buffer alone is 2.4 MB), `usbdisp` and `yuzukineko`.
+
+`usbdisp` is the trimmed image of the USB second screen: no SD card and file system, audio, USB host, CDC ACM, MP4 player, G2D, DBI, SPI, ADC and
+watchdog, built with `-Os`, and the heap starts right behind the image. The image is 0.5 MB instead of 1.1 MB (text 337 KB instead of 840 KB);
+with a 1024x600 picture in the decoder the heap uses about 9.2 MB of its 13.5 MB. The profile is picked by `SUN252I_BOARD` alone (the build writes
+`profile.h`, which `rtconfig.h` includes); the other boards build as before.
 
 ### G2D (`g2d_bench`, `g2d_bench_clk`)
 
