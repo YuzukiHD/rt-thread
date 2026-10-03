@@ -13,6 +13,7 @@
 
 #include <rthw.h>
 #include <rtthread.h>
+#include <rtdevice.h>
 #include <drivers/blk.h>
 #include <drivers/misc.h>
 
