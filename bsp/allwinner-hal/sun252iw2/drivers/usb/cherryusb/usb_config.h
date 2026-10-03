@@ -42,7 +42,7 @@
 #define CONFIG_USBDEV_MSC_MAX_BUFSIZE 512
 #define CONFIG_USB_MUSB_EP_NUM 4
 #define CONFIG_USB_MUSB_SUNXI
-/* the endpoint FIFOs are moved by the OTG DMA engine; off: the display class hangs after a while with it on */
+/* the endpoint FIFOs are moved by the OTG DMA engine (off: CPU copies); not yet run with the display class */
 /* #define CONFIG_USB_MUSB_DMA */
 
 /* ---------------- host (EHCI + OHCI) ---------------- */
