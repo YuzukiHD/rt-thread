@@ -10,6 +10,7 @@ drivers = [
     ('clock_control/ccu-sun252i.c', ''),
     ('interrupt_controller/pic-plic.c', ''),
     ('pinctrl/pinctrl-sun252i.c', ''),
+    ('pinctrl/jtag-sun252i.c', ''),
     ('dma/dma-sun252i.c', ''),
     ('watchdog/watchdog-sun252i.c', ''),
     ('i2c/i2c-sun252i.c', ''),

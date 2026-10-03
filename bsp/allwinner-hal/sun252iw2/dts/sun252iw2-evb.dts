@@ -65,6 +65,15 @@
 		bias-pull-up;
 	};
 
+	/* the JTAG port: TMS PF0, TDI PF1, TDO PF3, TCK PF5 (the pins of the SD card slot) */
+	jtag_pins: jtag-pins {
+		pinmux = <ALLWINNER_PINMUX(ALLWINNER_PIO_PF, 0, 4)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PF, 1, 4)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PF, 3, 4)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PF, 5, 4)>;
+		bias-pull-up;
+	};
+
 	sdc0_clk_pin: sdc0-clk-pin {
 		pinmux = <ALLWINNER_PINMUX(ALLWINNER_PIO_PF, 2, 2)>;
 		bias-disable;
@@ -116,12 +125,24 @@
 	status = "okay";
 };
 
-/* the SD card slot: PF6 is low with a card in */
+/*
+ * PF0..PF5 serve either the SD card slot or the JTAG port: switch the two status lines
+ * ("okay" on one, "disabled" on the other). PF6 is low with a card in.
+ */
 &mmc0 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&sdc0_pins>, <&sdc0_clk_pin>;
 	cd-gpios = <&pio 5 6 0>;
-	status = "okay";
+	status = "disabled";
+};
+
+/ {
+	jtag {
+		compatible = "allwinner,sun252i-jtag";
+		pinctrl-names = "default";
+		pinctrl-0 = <&jtag_pins>;
+		status = "okay";
+	};
 };
 
 /* the headphone / speaker output and the microphone; the speaker amplifier enable is PE10 */
