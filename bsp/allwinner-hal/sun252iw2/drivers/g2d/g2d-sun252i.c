@@ -8,6 +8,7 @@
  * feeds the jobs to the hardware one at a time, the task-end interrupt
  * completes them.
  */
+#include <drivers/clock_time.h>
 #include <rtthread.h>
 #include <rtdevice.h>
 #include <rthw.h>
@@ -44,7 +45,9 @@ static struct rt_messagequeue g2d_queue;
 static rt_uint8_t g2d_queue_pool[QUEUE_DEPTH * (sizeof(struct g2d_job *) + sizeof(void *))];
 static struct rt_semaphore hw_done;
 static volatile uint32_t hw_status;
+static volatile rt_uint64_t hw_start_tick, hw_ticks;    /* clock time counter: start of the last job, hardware time of it */
 static rt_bool_t g2d_up;
+static struct rt_clk *g2d_mod_clk;
 static rt_ubase_t g2d_base;
 
 static inline uint32_t g2d_rd(uint32_t off) { return HWREG32(g2d_base + off); }
@@ -90,6 +93,7 @@ static void g2d_hw_start(const struct g2d_job *job)
     g2d_wr(thread + G2D_THREAD_HEAD_LOW, (uint32_t)(uintptr_t)job->cmd);
     g2d_wr(thread + G2D_THREAD_HEAD_HIGH_LEN, FIELD_PREP(G2D_THREAD_HEAD_LEN_MASK, job->head_len));
     g2d_wr(thread + G2D_THREAD_ATTR, FIELD_PREP(G2D_THREAD_ATTR_CMD_NUM_MASK, 0) | G2D_THREAD_ATTR_END_IRQ);
+    hw_start_tick = rt_clock_time_get_counter();
     g2d_wr(thread + G2D_THREAD_UPDATE, 1);
 }
 
@@ -109,6 +113,7 @@ static void g2d_isr(int vector, void *param)
     uint32_t status = g2d_rd(status_reg);
 
     (void)vector; (void)param;
+    hw_ticks = rt_clock_time_get_counter() - hw_start_tick;
     g2d_wr(status_reg, status);     /* write 1 to clear */
     if (status & (G2D_THREAD_IRQ_TASK_END | G2D_THREAD_IRQ_TIMEOUT)) {
         g2d_pulse_reset(G2D_RESET_THREAD(THREAD_ID));
@@ -374,6 +379,7 @@ static rt_err_t g2d_probe(struct rt_platform_device *pdev)
     rt_reset_control_deassert(rst);
     rt_clk_set_rate(mod, rate);
     rt_clk_prepare_enable(mod);
+    g2d_mod_clk = mod;
 
     rt_sem_init(&hw_done, "g2d", 0, RT_IPC_FLAG_FIFO);
     rt_mq_init(&g2d_queue, "g2dq", g2d_queue_pool, sizeof(struct g2d_job *), sizeof(g2d_queue_pool), RT_IPC_FLAG_FIFO);
@@ -403,3 +409,39 @@ static struct rt_platform_driver g2d_driver =
     .probe = g2d_probe,
 };
 RT_PLATFORM_DRIVER_EXPORT(g2d_driver);
+
+/* hardware time of the last job in microseconds x 100 (from the start of the command list to the end interrupt) */
+uint32_t g2d_last_hw_time_x100us(void)
+{
+    return (uint32_t)(hw_ticks * 100000000ull / rt_clock_time_get_freq());
+}
+
+/* The memory bandwidth limit of the G2D itself (0: no limit, otherwise the level of the register). */
+void g2d_set_ddr_limit(uint32_t level)
+{
+    if (!g2d_up)
+        return;
+    g2d_upd(G2D_DDR_LIMIT, G2D_DDR_LIMIT_EN | G2D_DDR_LIMIT_MASK,
+            level ? (G2D_DDR_LIMIT_EN | (level & G2D_DDR_LIMIT_MASK)) : 0);
+}
+
+uint32_t g2d_get_ddr_limit(void)
+{
+    uint32_t v = g2d_up ? g2d_rd(G2D_DDR_LIMIT) : 0;
+
+    return (v & G2D_DDR_LIMIT_EN) ? (v & G2D_DDR_LIMIT_MASK) : 0;
+}
+
+/* The module clock of the G2D: request a rate, returns the rate set (0 on failure). */
+uint32_t g2d_set_clock_rate(uint32_t hz)
+{
+    if (!g2d_up || rt_clk_set_rate(g2d_mod_clk, hz) != RT_EOK)
+        return 0;
+
+    return (uint32_t)rt_clk_get_rate(g2d_mod_clk);
+}
+
+uint32_t g2d_get_clock_rate(void)
+{
+    return g2d_up ? (uint32_t)rt_clk_get_rate(g2d_mod_clk) : 0;
+}

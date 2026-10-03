@@ -264,6 +264,17 @@ int g2d_blend(const struct g2d_surface *fg,
 	      const struct g2d_rect *bg_rect, const struct g2d_surface *dst,
 	      const struct g2d_rect *dst_rect, const struct g2d_blend *blend, uint32_t flags);
 
+/** @brief Hardware time of the last operation in 1/100 us: command list start to end interrupt, no cache or scheduling time */
+uint32_t g2d_last_hw_time_x100us(void);
+
+/** @brief Bandwidth limit inside the G2D (0: off); the memory bus has its own per master limit */
+void g2d_set_ddr_limit(uint32_t level);
+uint32_t g2d_get_ddr_limit(void);
+
+/** @brief Module clock of the G2D: set a rate (returns the rate set, 0 on failure) and read it */
+uint32_t g2d_set_clock_rate(uint32_t hz);
+uint32_t g2d_get_clock_rate(void);
+
 /** @brief Bytes per pixel of the first plane of a format (0: planar/unsupported) */
 static inline unsigned int g2d_format_bytes_per_pixel(enum g2d_format format)
 {

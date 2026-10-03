@@ -162,3 +162,20 @@ static struct rt_platform_driver mbus_driver =
     .probe = mbus_probe,
 };
 RT_PLATFORM_DRIVER_EXPORT(mbus_driver);
+
+/* the priority and bandwidth limit registers of every master */
+static int mbus_masters(int argc, char **argv)
+{
+    rt_uint32_t m, prio, mbps;
+
+    for (m = 0; m < 40u; m++)
+    {
+        mbus_get_priority(m, &prio);
+        mbus_get_limit(m, &mbps);
+        rt_kprintf("master %2u: MSC %08x BWLR %08x (priority %u, limit %u MB/s)\n", m,
+                   mrd(MBUS_MSC + m * MBUS_STRIDE), mrd(MBUS_BWLR + m * MBUS_STRIDE), prio, mbps);
+    }
+
+    return 0;
+}
+MSH_CMD_EXPORT(mbus_masters, priority and limit registers of the 40 bus masters);
