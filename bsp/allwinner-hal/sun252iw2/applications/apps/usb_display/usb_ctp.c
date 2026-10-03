@@ -241,3 +241,45 @@ static int usb_ctp_orient(int argc, char **argv)
     return 0;
 }
 MSH_CMD_EXPORT(usb_ctp_orient, orientation of the touch panel: usb_ctp_orient swap flipx flipy);
+
+/* usb_ctp_pins: the levels of the two bus lines as GPIO inputs, without a pull, with pull-up and pull-down (the I2C mux is gone until reboot) */
+static int usb_ctp_pins(int argc, char **argv)
+{
+    static const char *const names[] = { "floating", "pull-up", "pull-down" };
+    static const rt_uint8_t modes[] = { PIN_MODE_INPUT, PIN_MODE_INPUT_PULLUP, PIN_MODE_INPUT_PULLDOWN };
+    int bank = argc > 1 ? atoi(argv[1]) : 4, a = argc > 2 ? atoi(argv[2]) : 0, b = argc > 3 ? atoi(argv[3]) : 1, i;
+
+    for (i = 0; i < 3; i++)
+    {
+        rt_pin_mode(bank * 32 + a, modes[i]);
+        rt_pin_mode(bank * 32 + b, modes[i]);
+        rt_thread_mdelay(5);
+        rt_kprintf("usb ctp: P%c%d=%d P%c%d=%d (%s)\n", 'A' + bank, a, rt_pin_read(bank * 32 + a), 'A' + bank, b,
+                   rt_pin_read(bank * 32 + b), names[i]);
+    }
+
+    return 0;
+}
+MSH_CMD_EXPORT(usb_ctp_pins, levels of the bus lines as GPIO: usb_ctp_pins [bank a b]);
+
+/* usb_ctp_unstick: nine clock pulses on SCL (a slave that holds SDA low lets go after them), SDA is read after each */
+static int usb_ctp_unstick(int argc, char **argv)
+{
+    int scl = 4 * 32 + 0, sda = 4 * 32 + 1, i;
+
+    rt_pin_mode(sda, PIN_MODE_INPUT);
+    rt_pin_mode(scl, PIN_MODE_OUTPUT_OD);
+    rt_pin_write(scl, 1);
+    rt_kprintf("usb ctp: SDA before %d\n", rt_pin_read(sda));
+    for (i = 0; i < 9; i++)
+    {
+        rt_pin_write(scl, 0);
+        rt_thread_mdelay(1);
+        rt_pin_write(scl, 1);
+        rt_thread_mdelay(1);
+        rt_kprintf("usb ctp: clock %d, SCL %d SDA %d\n", i + 1, rt_pin_read(scl), rt_pin_read(sda));
+    }
+
+    return 0;
+}
+MSH_CMD_EXPORT(usb_ctp_unstick, clock the bus lines by hand to release a stuck slave);
