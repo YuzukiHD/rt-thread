@@ -304,3 +304,32 @@ static int usb_bench_check(int argc, char **argv)
 MSH_CMD_EXPORT(usb_bench_check, verify the OUT stream pattern: usb_bench_check 1|0);
 
 MSH_CMD_EXPORT(usb_bench_stat, USB rates over the last burst of traffic and the CPU load);
+
+/* background memory traffic: copies through the CPU cache, so that dirty lines are evicted all over RAM */
+static volatile rt_bool_t load_on;
+
+static void load_thread(void *arg)
+{
+    const rt_size_t size = 1024 * 1024;
+    rt_uint8_t *a = rt_malloc_align(size, 64), *b = rt_malloc_align(size, 64);
+
+    while (a && b && load_on)
+    {
+        memcpy(b, a, size);
+        memset(a, 0x5a, size);
+        rt_thread_mdelay(1);
+    }
+    rt_free_align(a);
+    rt_free_align(b);
+}
+
+static int usb_bench_load(int argc, char **argv)
+{
+    load_on = argc > 1 && argv[1][0] != '0';
+    if (load_on)
+        rt_thread_startup(rt_thread_create("usbload", load_thread, RT_NULL, 2048, 25, 5));
+    rt_kprintf("usb bench: memory load %s\n", load_on ? "on" : "off");
+
+    return 0;
+}
+MSH_CMD_EXPORT(usb_bench_load, memory traffic while benchmarking: usb_bench_load 1|0);

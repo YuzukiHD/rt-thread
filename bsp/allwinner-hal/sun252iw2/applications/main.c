@@ -7,18 +7,6 @@
 #include <rtthread.h>
 #include <rtdevice.h>
 #include "drv_display.h"
-
-static void heartbeat(void *p)
-{
-    int i;
-
-    for (i = 0; i < 5; i++)
-    {
-        rt_thread_mdelay(1000);
-        rt_kprintf("heartbeat %d tick=%u\n", i, (rt_uint32_t)rt_tick_get());
-    }
-}
-
 /* the boot picture: eight colour bars over a gray gradient, then the backlight */
 static void boot_screen(void)
 {
@@ -51,6 +39,5 @@ int main(void)
 {
     rt_kprintf("Hello RT-Thread on the Allwinner sun252iw2\n");
     boot_screen();
-    rt_thread_startup(rt_thread_create("hb", heartbeat, RT_NULL, 2048, 15, 5));
     return 0;
 }

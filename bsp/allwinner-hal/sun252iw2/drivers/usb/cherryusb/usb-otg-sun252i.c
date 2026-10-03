@@ -55,6 +55,7 @@ static void usbd_isr(int vector, void *param)
 
 #ifdef CONFIG_USB_MUSB_DMA
 static rt_ubase_t dma_buf[8];   /* start of the running transfer of each channel */
+static rt_uint16_t dma_mps[8];  /* packet size of the running transfer of each channel */
 
 static unsigned int dma_ch(uint8_t ep_idx, bool is_in)
 {
@@ -71,6 +72,13 @@ bool usb_musb_dma_start(uint8_t ep_idx, bool is_in, void *buf, uint32_t len, uin
 
     if ((HWREG32(reg + DMA_CFG) & DMA_CFG_EN) || len > DMA_LEN_MASK)
         return false;
+    /*
+     * The cache of the buffer is written back and dropped line by line: a buffer that shares a
+     * line with other data (or a length that ends inside one) would lose the CPU's changes to
+     * that data. Such transfers stay with the CPU.
+     */
+    if (((rt_ubase_t)buf | len) & (DMA_ALIGN - 1u))
+        return false;
 
     /* the buffer goes through the CPU cache: write it out, or drop stale lines before the DMA fills it */
     rt_hw_cpu_dcache_ops(RT_HW_CACHE_FLUSH, (void *)start, size);
@@ -78,6 +86,7 @@ bool usb_musb_dma_start(uint8_t ep_idx, bool is_in, void *buf, uint32_t len, uin
         rt_hw_cpu_dcache_ops(RT_HW_CACHE_INVALIDATE, (void *)start, size);
 
     dma_buf[ch] = (rt_ubase_t)buf;
+    dma_mps[ch] = mps;
     HWREG32(otg.base + DMA_IRQ_STA) = 1u << ch;
     HWREG32(otg.base + DMA_IRQ_EN) |= 1u << ch;
     HWREG32(reg + DMA_ADDR) = (rt_uint32_t)(rt_ubase_t)buf;
@@ -115,11 +124,54 @@ bool usb_musb_dma_done(uint8_t ep_idx, bool is_in, uint32_t *bytes)
     return true;
 }
 
+/*
+ * Returns once the residual count has not moved for 50 us (a DMA waiting for the memory bus can
+ * pause for a few us; one that has nothing left to take stays still), or after 1 ms.
+ */
+#define MTIME_LO        (*(volatile rt_uint32_t *)0x1400BFF8u)
+#define MTIME_PER_US    24u
+
+static rt_uint32_t dma_drain(unsigned int ch, rt_uint32_t count)
+{
+    rt_ubase_t reg = otg.base + DMA_CH(ch);
+    rt_uint32_t begin = MTIME_LO, since = begin, now, res, last = ~0u;
+
+    for (;;)
+    {
+        res = HWREG32(reg + DMA_RESIDUAL) & DMA_LEN_MASK;
+        now = MTIME_LO;
+        if (res != last)
+        {
+            last = res;
+            since = now;
+        }
+        if ((now - since) >= 50u * MTIME_PER_US && (count - res) % dma_mps[ch] == 0)
+            break;
+        if ((now - begin) >= 1000u * MTIME_PER_US)
+            break;
+    }
+
+    return res;
+}
+
+void usb_musb_dma_settle(uint8_t ep_idx, bool is_in)
+{
+    unsigned int ch = dma_ch(ep_idx, is_in);
+
+    dma_drain(ch, HWREG32(otg.base + DMA_CH(ch) + DMA_COUNT) & DMA_LEN_MASK);
+}
+
 uint32_t usb_musb_dma_abort(uint8_t ep_idx, bool is_in)
 {
     unsigned int ch = dma_ch(ep_idx, is_in);
     rt_ubase_t reg = otg.base + DMA_CH(ch);
-    rt_uint32_t bytes = (HWREG32(reg + DMA_COUNT) & DMA_LEN_MASK) - (HWREG32(reg + DMA_RESIDUAL) & DMA_LEN_MASK);
+    rt_uint32_t count = HWREG32(reg + DMA_COUNT) & DMA_LEN_MASK;
+    rt_uint32_t res = HWREG32(reg + DMA_RESIDUAL) & DMA_LEN_MASK;
+    rt_uint32_t bytes;
+
+    if (!is_in)
+        res = dma_drain(ch, count);
+    bytes = count - res;
 
     HWREG32(reg + DMA_CFG) &= ~DMA_CFG_EN;
     HWREG32(otg.base + DMA_IRQ_EN) &= ~(1u << ch);

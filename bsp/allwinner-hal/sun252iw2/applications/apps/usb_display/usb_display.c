@@ -42,8 +42,12 @@
 #define FRAME_COUNT     2
 #define REPORT_MS       5000
 
+/* CPU load: the idle thread counts while nothing else runs; the rate measured at the start is 0% load */
+static volatile rt_uint32_t idle_count;
+static rt_uint32_t idle_rate;   /* counts per ms of an idle system */
+
 /* the driver parses the product string: name, resolution, encoding (jpg quality 1..10), frame rate, buffer limit in KB */
-#define PRODUCT_STRING  "cherryusb_R1024x600_Ejpg9_Fps30_Bl128"
+#define PRODUCT_STRING  "cherryusb_R1024x600_Ejpg9_Fps60_Bl128"
 
 static const uint8_t device_descriptor[] = {
     USB_DEVICE_DESCRIPTOR_INIT(USB_2_0, 0x00, 0x00, 0x00, USBD_VID, USBD_PID, 0x0101, 0x01)
@@ -220,8 +224,30 @@ static void display_thread(void *arg)
         /* a frame that fills the last packet exactly is followed by an empty frame of type 0xff */
         if (frame->frame_format == USBD_DISPLAY_TYPE_JPG && frame->frame_size > 0)
         {
-            bytes_in += frame->frame_size;
-            if (show_jpeg(frame->frame_buf + sizeof(*h), frame->frame_size, h->width, h->height) == 0)
+            const rt_uint8_t *d = frame->frame_buf + sizeof(*h);
+            rt_uint32_t n = frame->frame_size, e = n;
+
+            bytes_in += n;
+            /* a whole JPEG: SOI first, EOI last (zero padding may follow it) */
+            while (e > 2 && d[e - 1] == 0)
+                e--;
+            if (n < 4 || d[0] != 0xff || d[1] != 0xd8 || d[e - 2] != 0xff || d[e - 1] != 0xd9)
+            {
+                frames_bad++;
+                if (frames_bad <= 12)
+                {
+                    rt_uint32_t k = n, nz = 0;
+
+                    /* where the last EOI is, and how much non-zero data follows it */
+                    while (k > 2 && !(d[k - 2] == 0xff && d[k - 1] == 0xd9))
+                        k--;
+                    for (e = k; e < n; e++)
+                        nz += d[e] != 0;
+                    rt_kprintf("usb display: broken frame %u: size %u, last EOI ends at %u (%u bytes before the end, %u non-zero after), size mod 512 %u, mod 16384 %u\n",
+                               h->frame_id, n, k, n - k, nz, n & 511, n & 16383);
+                }
+            }
+            else if (show_jpeg(frame->frame_buf + sizeof(*h), frame->frame_size, h->width, h->height) == 0)
                 frames_ok++;
             else
                 frames_bad++;
@@ -232,9 +258,12 @@ report:
         {
             rt_uint32_t ms = (now_us() - last) / 1000, n = frames_ok - start_ok;
 
-            rt_kprintf("usb display: %u frames (%u.%02u fps), %u KB/s, %u bad, decode %u us, show %u us per frame\n",
+            rt_uint32_t rate = idle_count / ms, load = rate >= idle_rate ? 0 : 100 - rate * 100 / idle_rate;
+
+            idle_count = 0;
+            rt_kprintf("usb display: %u frames (%u.%02u fps), %u KB/s, %u bad, decode %u us, show %u us per frame, CPU %u%%\n",
                        n, n * 1000 / ms, (n * 100000 / ms) % 100, (bytes_in - start_bytes) / ms, frames_bad,
-                       n ? decode_us / n : 0, n ? show_us / n : 0);
+                       n ? decode_us / n : 0, n ? show_us / n : 0, load);
             decode_us = show_us = 0;
             start_ok = frames_ok;
             start_bytes = bytes_in;
@@ -243,6 +272,11 @@ report:
     }
     stream_close();
     running = RT_FALSE;
+}
+
+static void idle_hook(void)
+{
+    idle_count++;
 }
 
 static int usb_display_start(int argc, char **argv)
@@ -265,6 +299,15 @@ static int usb_display_start(int argc, char **argv)
     {
         rt_kprintf("usb display: already running\n");
         return -1;
+    }
+    if (!idle_rate)
+    {
+        rt_uint32_t t0 = rt_tick_get_millisecond();
+
+        idle_count = 0;
+        rt_thread_idle_sethook(idle_hook);
+        rt_thread_mdelay(200);
+        idle_rate = idle_count / (rt_tick_get_millisecond() - t0);
     }
     if (!usb_up)
     {

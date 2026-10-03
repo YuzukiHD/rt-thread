@@ -61,7 +61,7 @@ its frame buffers from it.
 
 ## USB device performance (applications/apps/usb_cdc)
 
-The bulk endpoints (all but EP0) can be moved by the OTG's internal DMA (`CONFIG_USB_MUSB_DMA`, off by default, not yet run with the USB display class; the CDC benchmark below ran clean; whole packets by DMA,
+The bulk endpoints (all but EP0) can be moved by the OTG's internal DMA (`CONFIG_USB_MUSB_DMA`, on by default (`usb_config.h`); buffers that are not 64 byte aligned stay on the CPU, a short packet is confirmed after the DMA has been still for 50 us; whole packets by DMA,
 short packets and tails by the CPU, the DMA ends with an interrupt on the shared OTG line). VEND0 bit 0 stays set in
 both modes, the CPU/DMA choice is made in the endpoint CSR. Measured on the CDC ACM port with 16 KiB transfers and
 a pattern check of both directions (0 errors, odd write sizes included):
@@ -88,3 +88,7 @@ plane. The statistics line every 5 s shows frames per second, KB/s and the decod
 (3 ms decode per frame). The port stays a display until the next reboot: `usb_device_start` (CDC) and
 `usb_display_start` exclude each other. After a download with xfel run `usb_reconnect` once so that the PC sees a fresh attach.
 
+
+## USB display rates
+
+`usb_display_start` with `Fps60` in the product string: 1024x600 JPEG at 38-42 fps with the window moving (4.5-4.8 MB/s), decode 17 ms and show 1 ms per frame, CPU 20-24% with the OTG DMA (28-38% with CPU copies), 0 broken frames over 4 minutes. Frames are checked for SOI/EOI before decoding; a broken one is counted and skipped (it used to show as green or garbled pictures).
