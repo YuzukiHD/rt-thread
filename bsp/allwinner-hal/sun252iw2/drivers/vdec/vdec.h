@@ -65,6 +65,9 @@ struct vdec_frame {
 /** A video stream being decoded */
 struct vdec_stream;
 
+/** vdec_stream_config.holding_frames: keep no picture */
+#define VDEC_HOLD_NONE	(-1)
+
 /** Stream parameters */
 struct vdec_stream_config {
 	enum vdec_codec codec;
@@ -81,6 +84,12 @@ struct vdec_stream_config {
 	 * decoding itself at 720p.
 	 */
 	bool no_cache_ops;
+	/**
+	 * Pictures the application keeps (shown) while the engine decodes the next ones; 0 means the default of 3,
+	 * VDEC_HOLD_NONE none (the engine then has too few pictures when the application holds one and returns -EBUSY).
+	 * The engine allocates two pictures plus this many: at 1080p a picture is 3 MB.
+	 */
+	int holding_frames;
 	/** Picture size, JPEG streams only (the engine wants it up front) */
 	uint16_t width;
 	uint16_t height;

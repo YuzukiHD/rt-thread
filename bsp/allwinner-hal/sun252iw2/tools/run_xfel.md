@@ -140,6 +140,16 @@ plane. The statistics line every 5 s shows frames per second, KB/s and the decod
 (3 ms decode per frame). The port stays a display until the next reboot: the CDC device (`usb_device_start` of the tests, `usb_bench_start` of the bench) and
 `usb_display_start` exclude each other. After a download with xfel run `usb_reconnect` once so that the PC sees a fresh attach.
 
+The size is chosen at start: `usb_display_start [width height [fps [quality 1..10 [frame limit KB]]]]` (default: the panel size, 60 fps,
+quality 9, 500 KB). The size goes to the PC in the product string of the USB descriptor, so it cannot change before a reboot;
+Windows then makes one monitor of exactly that size (the driver offers a single mode, no list to pick from) and the video plane of the
+display engine scales the picture to the panel, keeping its shape. The frame limit has to be large enough for the size: with
+`Bl128` the driver refused 1920x1080 as against its specification and fell back to 1280x720. Size limits are the memory (16 MB
+PSRAM): the decoder needs three 16-aligned NV12 pictures at least (4.5 bytes per pixel), the stream buffer and the frame buffers come on top, about
+7.6 MB are left with the display on, so about 1.6 million pixels at most: 800x480, 1024x600, 1280x720 and 1600x900 work (1600x900:
+41 ms decode per frame, the show waits for the refresh because only one picture is kept), 1920x1080 and 4K do not (`usb_display_start`
+says so; a 4K NV12 picture alone is 12.4 MB). With room for four pictures (about 1.27 million pixels) the show does not wait.
+
 
 ## USB display rates
 

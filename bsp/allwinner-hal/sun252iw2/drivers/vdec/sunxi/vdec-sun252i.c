@@ -349,7 +349,7 @@ int vdec_stream_open(const struct vdec_stream_config *config,
 		cfg.align_stride = 16;
 	}
 	cfg.output_pixel_format = config->format == VDEC_FORMAT_NV21 ? VE_PIX_NV21 : VE_PIX_NV12;
-	cfg.display_holding_fb_num = 3;
+	cfg.display_holding_fb_num = config->holding_frames == 0 ? 3 : (config->holding_frames == VDEC_HOLD_NONE ? 0 : config->holding_frames);
 	cfg.disp_error_frame = 1;
 	cfg.vbv_buffer_size = config->buffer_size;
 	if (ve_decoder_init(st->decoder, &info, &cfg) != 0) {

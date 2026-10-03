@@ -7,13 +7,17 @@
  * driver, the PC sends its desktop as JPEG frames over a bulk endpoint, the video engine decodes
  * them and the picture goes to the video plane of the display.
  *
- *   usb_display_start       enumerate as a display (the USB port then stays a display until reboot)
+ *   usb_display_start [width height [fps [quality [frame limit KB]]]]
+ *                           enumerate as a display of that size (default: the size of the panel; the video plane
+ *                           of the display engine scales the picture to the panel, keeping its shape). The USB port
+ *                           then stays a display of that size until reboot.
  *   usb_display_stop        stop showing frames
  *   usb_display_selftest    run a built-in JPEG through the decode and display path (no USB)
  */
 #include <rtthread.h>
 #include <rthw.h>
 #include <string.h>
+#include <stdlib.h>
 
 #include "usbd_core.h"
 #include "usbd_display.h"
@@ -46,8 +50,22 @@
 static volatile rt_uint32_t idle_count;
 static rt_uint32_t idle_rate;   /* counts per ms of an idle system */
 
-/* the driver parses the product string: name, resolution, encoding (jpg quality 1..10), frame rate, buffer limit in KB */
-#define PRODUCT_STRING  "cherryusb_R1024x600_Ejpg9_Fps60_Bl128"
+/*
+ * The driver parses the product string: name, resolution, encoding (jpg quality 1..10), frame rate, buffer limit in KB.
+ * The string is made by usb_display_start from its arguments.
+ */
+#define PRODUCT_FORMAT  "cherryusb_R%ux%u_Ejpg%u_Fps%u_Bl%u"
+#ifndef ROUND_UP
+#define ROUND_UP(x, a) (((x) + (a) - 1) / (a) * (a))
+#endif
+#define DEFAULT_FPS     60
+#define DEFAULT_QUALITY 9
+#define DEFAULT_BL_KB   500     /* the largest frame the buffers hold (FRAME_BUF_SIZE minus the headroom) */
+#define MIN_SIZE        64
+#define MAX_WIDTH       1920
+#define MAX_HEIGHT      1080
+static char product_string[64];
+static rt_uint32_t host_w, host_h;     /* the size the host was told */
 
 static const uint8_t device_descriptor[] = {
     USB_DEVICE_DESCRIPTOR_INIT(USB_2_0, 0x00, 0x00, 0x00, USBD_VID, USBD_PID, 0x0101, 0x01)
@@ -67,7 +85,7 @@ static const uint8_t device_quality_descriptor[] = {
 static const char *string_descriptors[] = {
     (const char[]){ 0x09, 0x04 },   /* language id */
     "CherryUSB",                    /* manufacturer */
-    PRODUCT_STRING,                 /* product */
+    product_string,                 /* product */
     "2022123456",                   /* serial number */
 };
 
@@ -128,6 +146,9 @@ static volatile rt_bool_t running, stop_req;
  */
 static struct vdec_stream *jpeg_stream;
 static rt_uint32_t jpeg_w, jpeg_h;
+static int jpeg_hold = 3;           /* pictures the decoder keeps for us (1..3), chosen from the free memory */
+#define JPEG_HOLD_MIN   1           /* 1: the show waits for the refresh and only one picture is kept; 2 or more: it does not wait, two are kept */
+#define JPEG_VBV_SIZE   (1024 * 1024)
 static struct vdec_frame shown, older;
 
 static rt_uint32_t frames_ok, frames_bad, bytes_in, decode_us, show_us;
@@ -166,7 +187,8 @@ static int show_jpeg(const void *jpeg, size_t len, rt_uint32_t w, rt_uint32_t h)
         memset(&cfg, 0, sizeof(cfg));
         cfg.codec = VDEC_CODEC_JPEG;
         cfg.format = VDEC_FORMAT_NV12;
-        cfg.buffer_size = 1024 * 1024;
+        cfg.buffer_size = JPEG_VBV_SIZE;
+        cfg.holding_frames = jpeg_hold;
         cfg.width = w;
         cfg.height = h;
         ret = vdec_stream_open(&cfg, &jpeg_stream);
@@ -197,12 +219,23 @@ static int show_jpeg(const void *jpeg, size_t len, rt_uint32_t w, rt_uint32_t h)
     yuv.stride_y = f.stride[0];
     yuv.stride_uv = f.stride[1];
     yuv.bt709 = RT_FALSE;
-    yuv.nonblock = RT_TRUE;
+    /*
+     * With room for two kept pictures the show does not wait for the refresh and the picture before the last is freed one
+     * step late (it may still be scanned out). With one kept picture the show waits, then the picture before is free.
+     */
+    yuv.nonblock = jpeg_hold >= 2;
     ret = lcd_show_yuv(&yuv);
     show_us += now_us() - t0;
-    if (older.priv)
-        vdec_frame_release(&older);
-    older = shown;
+    if (jpeg_hold >= 2)
+    {
+        if (older.priv)
+            vdec_frame_release(&older);
+        older = shown;
+    }
+    else if (shown.priv)
+    {
+        vdec_frame_release(&shown);
+    }
     shown = f;
 
     return ret;
@@ -247,10 +280,21 @@ static void display_thread(void *arg)
                                h->frame_id, n, k, n - k, nz, n & 511, n & 16383);
                 }
             }
-            else if (show_jpeg(frame->frame_buf + sizeof(*h), frame->frame_size, h->width, h->height) == 0)
-                frames_ok++;
             else
-                frames_bad++;
+            {
+                int err = show_jpeg(frame->frame_buf + sizeof(*h), frame->frame_size, h->width, h->height);
+
+                if (err == 0)
+                {
+                    frames_ok++;
+                }
+                else
+                {
+                    frames_bad++;
+                    if (frames_bad <= 8)
+                        rt_kprintf("usb display: frame %u (%ux%u, %u bytes) failed: %d\n", h->frame_id, h->width, h->height, n, err);
+                }
+            }
         }
         usbd_display_enqueue(frame);
 report:
@@ -283,7 +327,37 @@ static int usb_display_start(int argc, char **argv)
 {
     rt_thread_t t;
     rt_ubase_t base = sun252i_usb_otg_base();
+    rt_uint32_t w = lcd_width(), h = lcd_height(), fps = DEFAULT_FPS, quality = DEFAULT_QUALITY, bl_kb = DEFAULT_BL_KB;
     int i;
+
+    if (argc > 1 && argc < 3)
+    {
+        rt_kprintf("usage: usb_display_start [width height [fps [quality 1..10 [frame limit KB]]]]\n");
+        return -1;
+    }
+    if (argc > 2)
+    {
+        w = atoi(argv[1]);
+        h = atoi(argv[2]);
+    }
+    if (argc > 3)
+        fps = atoi(argv[3]);
+    if (argc > 4)
+        quality = atoi(argv[4]);
+    if (argc > 5)
+        bl_kb = atoi(argv[5]);
+    if (w < MIN_SIZE || h < MIN_SIZE || w > MAX_WIDTH || h > MAX_HEIGHT || (w & 1) || (h & 1) || fps < 1 || fps > 120 ||
+        quality < 1 || quality > 10 || bl_kb < 16 || bl_kb > DEFAULT_BL_KB)
+    {
+        rt_kprintf("usb display: %ux%u, %u fps, quality %u not possible (size %d..%d x %d..%d, even, fps 1..120, quality 1..10)\n",
+                   w, h, fps, quality, MIN_SIZE, MAX_WIDTH, MIN_SIZE, MAX_HEIGHT);
+        return -1;
+    }
+    if (usb_up && (w != host_w || h != host_h))
+    {
+        rt_kprintf("usb display: the host was told %ux%u; reboot to change the size\n", host_w, host_h);
+        return -1;
+    }
 
     if (!base)
     {
@@ -311,6 +385,9 @@ static int usb_display_start(int argc, char **argv)
     }
     if (!usb_up)
     {
+        rt_snprintf(product_string, sizeof(product_string), PRODUCT_FORMAT, w, h, quality, fps, bl_kb);
+        host_w = w;
+        host_h = h;
         for (i = 0; i < FRAME_COUNT; i++)
         {
             frame_pool[i].frame_buf = rt_malloc_align(FRAME_BUF_SIZE, 64);
@@ -320,6 +397,36 @@ static int usb_display_start(int argc, char **argv)
                 rt_kprintf("usb display: no memory for the frame buffers\n");
                 return -1;
             }
+        }
+        {
+            /*
+             * The pictures of the decoder (two plus the held ones, 16 aligned NV12) and its stream buffer must fit what is
+             * left. One held picture (blocking show) is the least that works: the picture on the screen, the one the engine
+             * decodes into and the one waiting to be shown; two held pictures let the show run without waiting.
+             */
+            rt_size_t total, used, max_used;
+            rt_uint64_t pic = (rt_uint64_t)ROUND_UP(w, 16) * ROUND_UP(h, 16) * 3 / 2;
+            rt_uint64_t room;
+
+            rt_memory_info(&total, &used, &max_used);
+            room = total - used > JPEG_VBV_SIZE + 256 * 1024 ? total - used - JPEG_VBV_SIZE - 256 * 1024 : 0;
+            for (jpeg_hold = 3; jpeg_hold >= JPEG_HOLD_MIN && pic * (2 + jpeg_hold) > room; jpeg_hold--)
+                ;
+            if (jpeg_hold < JPEG_HOLD_MIN)
+            {
+                rt_kprintf("usb display: %ux%u does not fit the memory: a picture takes %u KB, the decoder needs three and "
+                           "%u KB are free (about %u pixels at most)\n", w, h, (rt_uint32_t)(pic / 1024), (rt_uint32_t)(room / 1024),
+                           (rt_uint32_t)(room * 2 / 9));
+                for (i = 0; i < FRAME_COUNT; i++)
+                {
+                    rt_free_align(frame_pool[i].frame_buf);
+                    frame_pool[i].frame_buf = RT_NULL;
+                }
+                jpeg_hold = 3;
+                return -1;
+            }
+            rt_kprintf("usb display: %ux%u, %u KB per picture, %d kept (%s show)\n", w, h, (rt_uint32_t)(pic / 1024), jpeg_hold,
+                       jpeg_hold >= 2 ? "no-wait" : "waiting");
         }
         usbd_desc_register(0, &display_descriptor);
         usbd_add_interface(0, usbd_display_init_intf(&display_intf, DISPLAY_OUT_EP, DISPLAY_IN_EP, frame_pool, FRAME_COUNT));
@@ -332,7 +439,7 @@ static int usb_display_start(int argc, char **argv)
     if (!t)
         return -1;
     rt_thread_startup(t);
-    rt_kprintf("usb display: waiting for the host (%s)\n", PRODUCT_STRING);
+    rt_kprintf("usb display: waiting for the host (%s), shown on the %ux%u panel\n", product_string, lcd_width(), lcd_height());
 
     return 0;
 }
