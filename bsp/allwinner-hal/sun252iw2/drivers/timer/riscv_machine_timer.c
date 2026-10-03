@@ -4,16 +4,16 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * Kernel tick of the C907: the CLINT mtime counter (64 bit) at 0x1400bff8,
- * 24 MHz. On rv32 only the low word of the counter is read; the compare
- * arithmetic is wrap safe because one tick period is far below 2^32 cycles.
- * The compare register is updated high word first, the way the CLINT latches
- * it, so a partially written value can never fire.
+ * 24 MHz. The low word wraps after about 179 s, so the compare value is a
+ * full 64 bit sum. The compare register is updated high word first, the way
+ * the CLINT latches it, so a partially written value can never fire.
  */
 #include <rtthread.h>
 #include <rthw.h>
 #include "riscv-ops.h"
 
 #define CLINT_MTIME_LO  (*(volatile rt_uint32_t *)0x1400BFF8u)
+#define CLINT_MTIME_HI  (*(volatile rt_uint32_t *)0x1400BFFCu)
 #define CLINT_MTIMECMP_LO (*(volatile rt_uint32_t *)0x14004000u)
 #define CLINT_MTIMECMP_HI (*(volatile rt_uint32_t *)0x14004004u)
 
@@ -31,10 +31,22 @@ void drv_systick_isr(void)
 
 void rt_tick_interrupt_clear(void)
 {
+    rt_uint32_t hi, lo, next_hi, next_lo;
+
+    /* a consistent 64 bit read: the high word must not change around the low read */
+    do
+    {
+        hi = CLINT_MTIME_HI;
+        lo = CLINT_MTIME_LO;
+    } while (hi != CLINT_MTIME_HI);
+
+    next_lo = lo + (rt_uint32_t)tick_interval;
+    next_hi = hi + (next_lo < lo ? 1u : 0u);
+
     /* high word first: the low write latches the pair */
     CLINT_MTIMECMP_HI = 0xFFFFFFFFu;
-    CLINT_MTIMECMP_LO = CLINT_MTIME_LO + tick_interval;
-    CLINT_MTIMECMP_HI = 0u;
+    CLINT_MTIMECMP_LO = next_lo;
+    CLINT_MTIMECMP_HI = next_hi;
 }
 
 void drv_systick_init(unsigned long interval)
