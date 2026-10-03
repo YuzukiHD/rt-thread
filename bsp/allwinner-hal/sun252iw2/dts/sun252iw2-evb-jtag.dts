@@ -1,0 +1,18 @@
+/*
+ * Copyright (c) 2006-2026, RT-Thread Development Team
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * The EVB with the JTAG port on PF0 (TMS), PF1 (TDI), PF3 (TDO) and PF5 (TCK): these are the pins
+ * of the SD card slot, which is switched off.
+ */
+
+#include "sun252iw2-evb.dts"
+
+&mmc0 {
+	status = "disabled";
+};
+
+&{/jtag} {
+	status = "okay";
+};

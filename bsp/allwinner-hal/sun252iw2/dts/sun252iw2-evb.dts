@@ -126,14 +126,14 @@
 };
 
 /*
- * PF0..PF5 serve either the SD card slot or the JTAG port: switch the two status lines
- * ("okay" on one, "disabled" on the other). PF6 is low with a card in.
+ * PF0..PF5 serve either the SD card slot (here) or the JTAG port (sun252iw2-evb-jtag.dts).
+ * PF6 is low with a card in.
  */
 &mmc0 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&sdc0_pins>, <&sdc0_clk_pin>;
 	cd-gpios = <&pio 5 6 0>;
-	status = "disabled";
+	status = "okay";
 };
 
 / {
@@ -141,7 +141,7 @@
 		compatible = "allwinner,sun252i-jtag";
 		pinctrl-names = "default";
 		pinctrl-0 = <&jtag_pins>;
-		status = "okay";
+		status = "disabled";
 	};
 };
 

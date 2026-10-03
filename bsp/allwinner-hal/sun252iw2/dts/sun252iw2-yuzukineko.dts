@@ -1,0 +1,78 @@
+/*
+ * Copyright (c) 2006-2026, RT-Thread Development Team
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * YuzukiHD YuzukiNeko: the EVB tree with the console on UART1 (PB00/PB01), the TF card slot on
+ * SMHC0 (no JTAG on PF), I2C0 on PE08/PE09 and no panel backlight (PB0..PB3 are the console and
+ * free pins, nothing is wired to the backlight yet).
+ */
+
+#include "sun252iw2-evb.dts"
+
+/ {
+	model = "YuzukiHD YuzukiNeko";
+	compatible = "yuzukihd,yuzukineko", "allwinner,sun252iw2";
+
+	aliases {
+		serial1 = &uart1;
+	};
+
+	chosen {
+		stdout-path = "serial1:115200n8";
+	};
+};
+
+/* UART1 console on PB00 (TX) / PB01 (RX), function 4 */
+&pio {
+	uart1_pins: uart1-pins {
+		pinmux = <ALLWINNER_PINMUX(ALLWINNER_PIO_PB, 0, 4)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PB, 1, 4)>;
+	};
+
+	i2c0_pins: i2c0-pins {
+		pinmux = <ALLWINNER_PINMUX(ALLWINNER_PIO_PE, 8, 4)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PE, 9, 4)>;
+		bias-pull-up;
+	};
+};
+
+&uart1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&uart1_pins>;
+	status = "okay";
+};
+
+&uart3 {
+	status = "disabled";
+};
+
+&i2c0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2c0_pins>;
+	status = "okay";
+};
+
+&i2c2 {
+	status = "disabled";
+};
+
+/* the TF card slot owns PF0..PF5 */
+&mmc0 {
+	status = "okay";
+};
+
+&{/jtag} {
+	status = "disabled";
+};
+
+/* no backlight */
+&pwm_bl {
+	status = "disabled";
+};
+
+&panel0 {
+	/delete-property/ backlight;
+};
+
+/delete-node/ &backlight0;
