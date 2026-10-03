@@ -461,7 +461,10 @@ static int usb_display_start(int argc, char **argv)
         usbd_desc_register(0, &display_descriptor);
         usbd_add_interface(0, usbd_display_init_intf(&display_intf, DISPLAY_OUT_EP, DISPLAY_IN_EP, frame_pool, FRAME_COUNT));
         if (with_touch)
+        {
             usb_touch_init(0);
+            usb_ctp_start();
+        }
         usbd_initialize(0, base, usbd_event_handler);
         usb_up = RT_TRUE;
     }

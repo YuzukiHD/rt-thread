@@ -37,6 +37,13 @@
 };
 
 &pio {
+	/* the touch panel controller */
+	i2c1_pins: i2c1-pins {
+		pinmux = <ALLWINNER_PINMUX(ALLWINNER_PIO_PE, 0, 4)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PE, 1, 4)>;
+		bias-pull-up;
+	};
+
 	i2c2_pins: i2c2-pins {
 		pinmux = <ALLWINNER_PINMUX(ALLWINNER_PIO_PD, 10, 4)
 			  ALLWINNER_PINMUX(ALLWINNER_PIO_PD, 11, 4)>;
@@ -110,6 +117,12 @@
 			  ALLWINNER_PINMUX(ALLWINNER_PIO_PB, 2, 2)
 			  ALLWINNER_PINMUX(ALLWINNER_PIO_PB, 3, 2)>;
 	};
+};
+
+&i2c1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2c1_pins>;
+	status = "okay";
 };
 
 &i2c2 {

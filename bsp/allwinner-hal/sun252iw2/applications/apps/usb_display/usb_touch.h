@@ -37,4 +37,7 @@ void usb_touch_init(uint8_t busid);
 /* send one report with up to USB_TOUCH_MAX_CONTACTS fingers; -RT_EBUSY while the last one is on its way */
 int usb_touch_send(const struct usb_touch_point *points, int count);
 
+/* start the thread that reads the touch panel and sends its points (usb_ctp.c) */
+void usb_ctp_start(void);
+
 #endif
