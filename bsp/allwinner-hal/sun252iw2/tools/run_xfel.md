@@ -151,6 +151,16 @@ PSRAM): the decoder needs three 16-aligned NV12 pictures at least (4.5 bytes per
 says so; a 4K NV12 picture alone is 12.4 MB). With room for four pictures (about 1.27 million pixels) the show does not wait.
 
 
+### Touch over USB (`usb_display_start ... touch`)
+
+A trailing `touch` makes the device composite (PID 0x2986): interface 0 is the display (the display driver binds it as
+`MI_00`), interface 1 is a HID multi-touch digitizer (interrupt IN 0x83, 5 contacts, absolute 0..32767, report ID 1, feature
+report with the contact maximum). Windows loads it with the inbox HID driver as a touch screen (`GetSystemMetrics(SM_DIGITIZER)` =
+0xC1: integrated touch, multi-input, ready; 5 touches) with nothing to install. `usb_touch_demo [1|2]` sends a synthetic
+diagonal drag (two mirrored fingers with 2) to look at what the PC does with it. `usb_touch_send()` in `usb_touch.h` is the
+entry point for a real touch controller. Which monitor the touch lands on is up to Windows (Settings > Touch / Tablet PC
+Settings can map it to the board's monitor).
+
 ## USB display rates
 
 `usb_display_start` with `Fps60` in the product string: 1024x600 JPEG at 38-42 fps with the window moving (4.5-4.8 MB/s), decode 17 ms and show 1 ms per frame, CPU 20-24% with the OTG DMA (28-38% with CPU copies), 0 broken frames over 4 minutes. Frames are checked for SOI/EOI before decoding; a broken one is counted and skipped (it used to show as green or garbled pictures).

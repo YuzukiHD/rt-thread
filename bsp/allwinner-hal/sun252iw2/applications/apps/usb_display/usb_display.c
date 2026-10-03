@@ -25,12 +25,14 @@
 #include "vdec.h"
 #include "drv_display.h"
 #include "data/test_jpeg.h"
+#include "usb_touch.h"
 
 #define DISPLAY_IN_EP   0x81
 #define DISPLAY_OUT_EP  0x02
 
 #define USBD_VID        0x303A
-#define USBD_PID        0x2987
+#define USBD_PID        0x2987     /* the display alone */
+#define USBD_PID_TOUCH  0x2986     /* composite: display on interface 0, touch screen on 1 */
 #define USBD_MAX_POWER  100
 
 #define USB_CONFIG_SIZE (9 + 9 + 7 + 7)
@@ -67,16 +69,37 @@ static rt_uint32_t idle_rate;   /* counts per ms of an idle system */
 static char product_string[64];
 static rt_uint32_t host_w, host_h;     /* the size the host was told */
 
-static const uint8_t device_descriptor[] = {
+static rt_bool_t with_touch;
+static uint8_t device_descriptor[] = {
     USB_DEVICE_DESCRIPTOR_INIT(USB_2_0, 0x00, 0x00, 0x00, USBD_VID, USBD_PID, 0x0101, 0x01)
 };
 
-static const uint8_t config_descriptor[] = {
-    USB_CONFIG_DESCRIPTOR_INIT(USB_CONFIG_SIZE, 0x01, 0x01, USB_CONFIG_BUS_POWERED, USBD_MAX_POWER),
-    USB_INTERFACE_DESCRIPTOR_INIT(0x00, 0x00, 0x02, 0xff, 0x00, 0x00, 0x00),
-    USB_ENDPOINT_DESCRIPTOR_INIT(DISPLAY_IN_EP, 0x02, DISPLAY_EP_MPS, 0x00),
-    USB_ENDPOINT_DESCRIPTOR_INIT(DISPLAY_OUT_EP, 0x02, DISPLAY_EP_MPS, 0x00),
-};
+/* filled by usb_display_start: the display interface, plus the touch screen if asked for */
+static uint8_t config_descriptor[USB_CONFIG_SIZE + USB_TOUCH_DESCRIPTOR_SIZE];
+
+static void build_config_descriptor(void)
+{
+    static const uint8_t display_part[] = {
+        USB_INTERFACE_DESCRIPTOR_INIT(0x00, 0x00, 0x02, 0xff, 0x00, 0x00, 0x00),
+        USB_ENDPOINT_DESCRIPTOR_INIT(DISPLAY_IN_EP, 0x02, DISPLAY_EP_MPS, 0x00),
+        USB_ENDPOINT_DESCRIPTOR_INIT(DISPLAY_OUT_EP, 0x02, DISPLAY_EP_MPS, 0x00),
+    };
+    uint8_t head[9] = { USB_CONFIG_DESCRIPTOR_INIT(0, 0x01, 0x01, USB_CONFIG_BUS_POWERED, USBD_MAX_POWER) };
+    uint32_t len = sizeof(head);
+
+    memcpy(config_descriptor, head, sizeof(head));
+    memcpy(config_descriptor + len, display_part, sizeof(display_part));
+    len += sizeof(display_part);
+    if (with_touch)
+    {
+        len += usb_touch_descriptor(config_descriptor + len, USB_TOUCH_INTERFACE);
+        config_descriptor[4] = 2;                               /* bNumInterfaces */
+        device_descriptor[10] = USBD_PID_TOUCH & 0xFF;          /* idProduct */
+        device_descriptor[11] = USBD_PID_TOUCH >> 8;
+    }
+    config_descriptor[2] = len & 0xFF;                          /* wTotalLength */
+    config_descriptor[3] = len >> 8;
+}
 
 static const uint8_t device_quality_descriptor[] = {
     0x0a, USB_DESCRIPTOR_TYPE_DEVICE_QUALIFIER, 0x00, 0x02, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00,
@@ -330,9 +353,15 @@ static int usb_display_start(int argc, char **argv)
     rt_uint32_t w = lcd_width(), h = lcd_height(), fps = DEFAULT_FPS, quality = DEFAULT_QUALITY, bl_kb = DEFAULT_BL_KB;
     int i;
 
+    /* a trailing "touch" adds the touch screen interface */
+    if (argc > 1 && !rt_strcmp(argv[argc - 1], "touch"))
+    {
+        with_touch = RT_TRUE;
+        argc--;
+    }
     if (argc > 1 && argc < 3)
     {
-        rt_kprintf("usage: usb_display_start [width height [fps [quality 1..10 [frame limit KB]]]]\n");
+        rt_kprintf("usage: usb_display_start [width height [fps [quality 1..10 [frame limit KB]]]] [touch]\n");
         return -1;
     }
     if (argc > 2)
@@ -428,8 +457,11 @@ static int usb_display_start(int argc, char **argv)
             rt_kprintf("usb display: %ux%u, %u KB per picture, %d kept (%s show)\n", w, h, (rt_uint32_t)(pic / 1024), jpeg_hold,
                        jpeg_hold >= 2 ? "no-wait" : "waiting");
         }
+        build_config_descriptor();
         usbd_desc_register(0, &display_descriptor);
         usbd_add_interface(0, usbd_display_init_intf(&display_intf, DISPLAY_OUT_EP, DISPLAY_IN_EP, frame_pool, FRAME_COUNT));
+        if (with_touch)
+            usb_touch_init(0);
         usbd_initialize(0, base, usbd_event_handler);
         usb_up = RT_TRUE;
     }
