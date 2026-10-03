@@ -61,7 +61,7 @@ its frame buffers from it.
 
 ## USB device performance (applications/apps/usb_cdc)
 
-The bulk endpoints (all but EP0) are moved by the OTG's internal DMA (`CONFIG_USB_MUSB_DMA`; whole packets by DMA,
+The bulk endpoints (all but EP0) can be moved by the OTG's internal DMA (`CONFIG_USB_MUSB_DMA`, **off by default**: with the USB display class the board hung silently after a while with it on, cause not found; the CDC benchmark below ran clean; whole packets by DMA,
 short packets and tails by the CPU, the DMA ends with an interrupt on the shared OTG line). VEND0 bit 0 stays set in
 both modes, the CPU/DMA choice is made in the endpoint CSR. Measured on the CDC ACM port with 16 KiB transfers and
 a pattern check of both directions (0 errors, odd write sizes included):

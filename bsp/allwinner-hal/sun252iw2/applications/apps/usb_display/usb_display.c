@@ -43,7 +43,7 @@
 #define REPORT_MS       5000
 
 /* the driver parses the product string: name, resolution, encoding (jpg quality 1..10), frame rate, buffer limit in KB */
-#define PRODUCT_STRING  "sun252iw2_R1024x600_Ejpg6_Fps30_Bl500"
+#define PRODUCT_STRING  "cherryusb_R1024x600_Ejpg9_Fps30_Bl128"
 
 static const uint8_t device_descriptor[] = {
     USB_DEVICE_DESCRIPTOR_INIT(USB_2_0, 0x00, 0x00, 0x00, USBD_VID, USBD_PID, 0x0101, 0x01)
@@ -62,9 +62,9 @@ static const uint8_t device_quality_descriptor[] = {
 
 static const char *string_descriptors[] = {
     (const char[]){ 0x09, 0x04 },   /* language id */
-    "RT-Thread",                    /* manufacturer */
+    "CherryUSB",                    /* manufacturer */
     PRODUCT_STRING,                 /* product */
-    "sun252iw2-0001",               /* serial number */
+    "2022123456",                   /* serial number */
 };
 
 static const uint8_t *device_descriptor_callback(uint8_t speed)
