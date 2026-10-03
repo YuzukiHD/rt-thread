@@ -1,0 +1,27 @@
+/*
+ * Copyright (c) 2006-2026, RT-Thread Development Team
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * The EVB for decoding only: the display, 2D accelerator, MIPI DBI, USB, audio and PWM nodes are
+ * off, so that their buffers (the 1024x600 frame buffer alone is 2.4 MB) leave the heap to the
+ * video engine. The SD card and the video engine stay.
+ */
+
+#include "sun252iw2-evb.dts"
+
+&display { status = "disabled"; };
+&rgb0 { status = "disabled"; };
+&tcon_lcd0 { status = "disabled"; };
+&tcon_top0 { status = "disabled"; };
+&de0 { status = "disabled"; };
+&g2d { status = "disabled"; };
+&dbi { status = "disabled"; };
+&usbotg { status = "disabled"; };
+&usbhci { status = "disabled"; };
+&usbphy { status = "disabled"; };
+&codec { status = "disabled"; };
+&i2s0 { status = "disabled"; };
+&owa { status = "disabled"; };
+&pwm_bl { status = "disabled"; };
+&pwm { status = "disabled"; };

@@ -10,7 +10,7 @@ CPPDEFINES = []
 # the device tree of the board: preprocess, compile and link the blob into the image
 if GetDepend('RT_USING_BUILTIN_FDT'):
     dts_dir = os.path.join(cwd, '..', 'dts')
-    # the board: SUN252I_BOARD=evb (default), evb-jtag or yuzukineko
+    # the board: SUN252I_BOARD=evb (default), evb-jtag, evb-h264 (decoding only) or yuzukineko
     board = os.environ.get('SUN252I_BOARD', 'evb')
     dts = os.path.join(dts_dir, 'sun252iw2-%s.dts' % board)
     dtb = os.path.join(cwd, 'sun252iw2-%s.dtb' % board)
