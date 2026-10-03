@@ -1,0 +1,13 @@
+import os
+from building import *
+
+cwd = GetCurrentDir()
+CPPPATH = [cwd, os.path.join(cwd, '..', 'apps', 'usb_cdc'), os.path.join(cwd, '..', '..', 'drivers'),
+           os.path.join(cwd, '..', '..', 'drivers', 'include'), os.path.join(cwd, '..', '..', 'drivers', 'usb', 'cherryusb')]
+
+# speed measurements, one file per unit; built with BSP_USING_BENCH
+group = DefineGroup('Bench', ['bench_g2d.c'], depend = ['BSP_USING_BENCH'], CPPPATH = CPPPATH)
+group = group + DefineGroup('Bench', ['bench_h264.c'], depend = ['BSP_USING_BENCH', 'RT_USING_DFS'], CPPPATH = CPPPATH)
+group = group + DefineGroup('Bench', ['bench_usb_cdc.c'], depend = ['BSP_USING_BENCH', 'RT_CHERRYUSB_DEVICE_CDC_ACM'], CPPPATH = CPPPATH)
+
+Return('group')

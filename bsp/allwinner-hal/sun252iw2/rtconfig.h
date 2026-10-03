@@ -63,6 +63,10 @@
 
 /* device model with a builtin device tree */
 #define RT_USING_DM
+
+/* the tests (applications/tests: test_*, test_all) and the speed measurements (applications/bench: *_bench) */
+/* #define BSP_USING_TESTS */
+/* #define BSP_USING_BENCH */
 #define RT_USING_CLOCK_TIME
 #define RT_USING_ADT
 #define RT_USING_ADT_REF

@@ -215,6 +215,20 @@ void usb_dc_low_level_deinit(void)
         sun252i_usb_phy_release(otg.phy, SUN252I_USB_DEVICE);
 }
 
+/* the host may have lost the port (the board was started with the download cable): drop the D+ pull-up for a moment so that it sees a fresh attach */
+static void usb_reconnect(void)
+{
+    volatile rt_uint8_t *power = (volatile rt_uint8_t *)(otg.base + 0x40);
+
+    if (!otg.base)
+        return;
+    *power &= ~0x40u;           /* soft disconnect: the host sees the device leave */
+    rt_thread_mdelay(500);
+    *power |= 0x40u;            /* and attach again */
+    rt_kprintf("usb: reconnected, POWER %02x\n", *power);
+}
+MSH_CMD_EXPORT(usb_reconnect, drop and raise the D+ pull-up);
+
 static rt_err_t otg_probe(struct rt_platform_device *pdev)
 {
     struct rt_device *dev = &pdev->parent;

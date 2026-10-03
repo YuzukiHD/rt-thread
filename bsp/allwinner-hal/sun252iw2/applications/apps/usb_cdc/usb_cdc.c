@@ -16,6 +16,7 @@
 #include <string.h>
 
 #include "usbd_core.h"
+#include "cdc_device.h"
 #include "usbd_cdc_acm.h"
 
 #define CDC_IN_EP       0x81
@@ -88,32 +89,11 @@ static const struct usb_descriptor cdc_descriptor = {
 
 static uint8_t *read_buffer, *write_buffer;
 static volatile rt_bool_t tx_busy, dtr_enable, src_on;
-static volatile rt_uint32_t bytes_out, bytes_in;
-static volatile rt_uint32_t cpu_idle_rate;      /* counts per ms with nothing going on */
-static volatile rt_uint32_t cpu_counter;
+static const struct usb_cdc_hooks *hooks;
 
-/* the window of one measurement runs from the first to the last transfer of the traffic */
-static volatile rt_uint32_t act_first_ms, act_last_ms, act_cpu_first, act_cpu_last, act_out_first, act_in_first;
-static volatile rt_bool_t act_started;
-static volatile rt_bool_t check_on = RT_TRUE;   /* verify the OUT stream: byte n of a burst is n & 0xff */
-static volatile rt_uint32_t out_pos, out_errors, out_first_err;
-
-static void note_activity(void)
+void usb_cdc_set_hooks(const struct usb_cdc_hooks *h)
 {
-    rt_uint32_t now = rt_tick_get_millisecond();
-
-    if (!act_started)
-    {
-        act_started = RT_TRUE;
-        act_first_ms = now;
-        act_cpu_first = cpu_counter;
-        act_out_first = bytes_out;
-        act_in_first = bytes_in;
-        out_pos = 0;
-        out_errors = 0;
-    }
-    act_last_ms = now;
-    act_cpu_last = cpu_counter;
+    hooks = h;
 }
 
 static void start_source(uint8_t busid)
@@ -138,26 +118,15 @@ static void usbd_event_handler(uint8_t busid, uint8_t event)
 
 static void usbd_cdc_acm_bulk_out(uint8_t busid, uint8_t ep, uint32_t nbytes)
 {
-    bytes_out += nbytes;
-    note_activity();
-    if (check_on)
-    {
-        rt_uint32_t n;
-
-        for (n = 0; n < nbytes; n++)
-        {
-            if (read_buffer[n] != ((out_pos + n) & 0xff) && out_errors++ == 0)
-                out_first_err = out_pos + n;
-        }
-        out_pos += nbytes;
-    }
+    if (hooks && hooks->rx)
+        hooks->rx(read_buffer, nbytes);
     usbd_ep_start_read(busid, CDC_OUT_EP, read_buffer, XFER_SIZE);
 }
 
 static void usbd_cdc_acm_bulk_in(uint8_t busid, uint8_t ep, uint32_t nbytes)
 {
-    bytes_in += nbytes;
-    note_activity();
+    if (hooks && hooks->tx)
+        hooks->tx(nbytes);
     tx_busy = RT_FALSE;
     start_source(busid);
 }
@@ -214,122 +183,18 @@ void cdc_acm_data_send_with_dtr_test(uint8_t busid)
     }
 }
 
-/* ---- benchmark ------------------------------------------------------------------------- */
-
-/* the idle hook counts how often the idle thread runs: what it counts is the CPU time left over */
-static void cpu_hook(void)
+/* stream the 16 KiB buffer to the host for as long as the port is open (pattern: byte n is n & 0xff) */
+void usb_cdc_source(rt_bool_t on, rt_bool_t pattern)
 {
-    cpu_counter++;
-}
-
-static void cpu_start(void)
-{
-    static rt_bool_t started;
-
-    if (!started)
-    {
-        rt_thread_idle_sethook(cpu_hook);
-        started = RT_TRUE;
-    }
-}
-
-static int usb_bench_cpu(int argc, char **argv)
-{
-    rt_uint32_t c0;
-
-    cpu_start();
-    rt_thread_mdelay(100);
-    c0 = cpu_counter;
-    rt_thread_mdelay(1000);
-    cpu_idle_rate = (cpu_counter - c0) / 1000;
-    rt_kprintf("usb bench: idle %u counts/ms\n", cpu_idle_rate);
-
-    return 0;
-}
-MSH_CMD_EXPORT(usb_bench_cpu, measure the idle CPU rate for usb_bench_stat);
-
-static int usb_bench_src(int argc, char **argv)
-{
-    src_on = argc > 1 && argv[1][0] != '0';
-    if (src_on)
+    if (!write_buffer)
+        return;
+    if (on && pattern)
     {
         rt_uint32_t n;
 
-        /* byte n of the stream is n & 0xff (a transfer is a multiple of 256 bytes) */
         for (n = 0; n < XFER_SIZE; n++)
             write_buffer[n] = n & 0xff;
     }
+    src_on = on;
     start_source(0);
-    rt_kprintf("usb bench: source %s\n", src_on ? "on" : "off");
-
-    return 0;
 }
-MSH_CMD_EXPORT(usb_bench_src, stream data to the host: usb_bench_src 1|0);
-
-static int usb_bench_stat(int argc, char **argv)
-{
-    rt_uint32_t ms, o, i, c, load = 0;
-
-    if (!act_started)
-    {
-        rt_kprintf("usb bench: no traffic since the last call\n");
-        return 0;
-    }
-    ms = act_last_ms - act_first_ms;
-    o = bytes_out - act_out_first;
-    i = bytes_in - act_in_first;
-    c = act_cpu_last - act_cpu_first;
-    if (ms == 0)
-        ms = 1;
-    if (cpu_idle_rate)
-    {
-        rt_uint32_t rate = c / ms;
-
-        load = rate >= cpu_idle_rate ? 0 : 100 - rate * 100 / cpu_idle_rate;
-    }
-    rt_kprintf("usb bench: OUT %u KB/s, IN %u KB/s over %u ms of traffic, CPU load %u%%\n", o / ms, i / ms, ms, load);
-    if (check_on && o)
-        rt_kprintf("usb bench: OUT check %u bytes, %u errors (first at %u)\n", out_pos, out_errors, out_first_err);
-    act_started = RT_FALSE;
-
-    return 0;
-}
-static int usb_bench_check(int argc, char **argv)
-{
-    check_on = argc > 1 && argv[1][0] != '0';
-    rt_kprintf("usb bench: OUT check %s\n", check_on ? "on" : "off");
-
-    return 0;
-}
-MSH_CMD_EXPORT(usb_bench_check, verify the OUT stream pattern: usb_bench_check 1|0);
-
-MSH_CMD_EXPORT(usb_bench_stat, USB rates over the last burst of traffic and the CPU load);
-
-/* background memory traffic: copies through the CPU cache, so that dirty lines are evicted all over RAM */
-static volatile rt_bool_t load_on;
-
-static void load_thread(void *arg)
-{
-    const rt_size_t size = 1024 * 1024;
-    rt_uint8_t *a = rt_malloc_align(size, 64), *b = rt_malloc_align(size, 64);
-
-    while (a && b && load_on)
-    {
-        memcpy(b, a, size);
-        memset(a, 0x5a, size);
-        rt_thread_mdelay(1);
-    }
-    rt_free_align(a);
-    rt_free_align(b);
-}
-
-static int usb_bench_load(int argc, char **argv)
-{
-    load_on = argc > 1 && argv[1][0] != '0';
-    if (load_on)
-        rt_thread_startup(rt_thread_create("usbload", load_thread, RT_NULL, 2048, 25, 5));
-    rt_kprintf("usb bench: memory load %s\n", load_on ? "on" : "off");
-
-    return 0;
-}
-MSH_CMD_EXPORT(usb_bench_load, memory traffic while benchmarking: usb_bench_load 1|0);

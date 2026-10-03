@@ -61,17 +61,6 @@ static void usb_regs(void)
 }
 MSH_CMD_EXPORT(usb_regs, dump the MUSB and PHY glue registers);
 
-static void usb_reconnect(void)
-{
-    volatile rt_uint8_t *power = (volatile rt_uint8_t *)(sun252i_usb_otg_base() + 0x40);
-
-    *power &= ~0x40u;           /* soft disconnect: the host sees the device leave */
-    rt_thread_mdelay(500);
-    *power |= 0x40u;            /* and attach again */
-    rt_kprintf("usb: reconnected, POWER %02x\n", *power);
-}
-MSH_CMD_EXPORT(usb_reconnect, drop and raise the D+ pull-up);
-
 static void usbh_start(void)
 {
     rt_ubase_t base = sun252i_usb_ehci_base();
