@@ -3,11 +3,11 @@ from building import *
 
 cwd = GetCurrentDir()
 src = Glob('*.c') + Glob('*.cpp')
-CPPPATH = [cwd, os.path.join(cwd, 'tests'), os.path.join(cwd, '..', 'drivers'), os.path.join(cwd, '..', 'drivers', 'include'),
+CPPPATH = [cwd, os.path.join(cwd, 'tests'), os.path.join(cwd, '..', 'drivers'), os.path.join(cwd, '..', 'drivers', 'include'), os.path.join(cwd, '..', 'drivers', 'sid'),
            os.path.join(cwd, '..', 'drivers', 'usb', 'phy')]
 
 # tests of the drivers (commands test_*, test_all): built with BSP_USING_TESTS, off by default
-tests = ['test_kernel.c', 'test_fpu.c', 'test_gpio.c', 'test_dma.c', 'test_wdt.c', 'test_bus.c', 'test_sd.c', 'test_mbus.c', 'test_audio.c', 'test_i2s.c', 'test_owa.c', 'test_display.c', 'test_g2d.c', 'test_vdec.c', 'test_dbi.c', 'test_usb.c', 'test_cache.c', 'test_all.c']
+tests = ['test_kernel.c', 'test_fpu.c', 'test_gpio.c', 'test_dma.c', 'test_wdt.c', 'test_bus.c', 'test_sd.c', 'test_mbus.c', 'test_sid.c', 'test_cpu.c', 'test_spif.c', 'test_audio.c', 'test_i2s.c', 'test_owa.c', 'test_display.c', 'test_g2d.c', 'test_vdec.c', 'test_dbi.c', 'test_usb.c', 'test_cache.c', 'test_all.c']
 if GetDepend('BSP_USING_TESTS'):
     src += [os.path.join('tests', t) for t in tests]
 

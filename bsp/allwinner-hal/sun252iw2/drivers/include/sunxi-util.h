@@ -48,4 +48,9 @@ static inline void sunxi_dcache_flush_inval(void *addr, size_t size)
     rt_hw_cpu_dcache_ops(RT_HW_CACHE_FLUSH | RT_HW_CACHE_INVALIDATE, addr, size);
 }
 
+/* CPU clock (PLL_CPU), ccu-sun252i.c: rates in Hz */
+rt_ubase_t sun252i_cpu_get_rate(void);
+/* raise in 72 MHz steps with a memory self test after each one; returns the rate reached */
+rt_ubase_t sun252i_cpu_raise_rate(rt_ubase_t target);
+
 #endif

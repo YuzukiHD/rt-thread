@@ -96,6 +96,7 @@
 #define RT_USING_I2C
 #ifndef BSP_PROFILE_USBDISP
 #define RT_USING_SPI
+#define RT_USING_MTD_NOR
 #endif
 #define RT_USING_PWM
 #define RT_USING_CHERRYUSB

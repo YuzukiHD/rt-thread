@@ -15,11 +15,13 @@ drivers = [
     ('watchdog/watchdog-sun252i.c', 'RT_USING_WDT'),
     ('i2c/i2c-sun252i.c', ''),
     ('spi/spi-sun252i.c', 'RT_USING_SPI'),
+    ('spif/spif-sun252i.c', 'RT_USING_MTD_NOR'),
     ('pwm/pwm-sun252i.c', ''),
     ('pwm/pwm-bl-sun252i.c', ''),
     ('adc/adc-sun252i.c', 'RT_USING_ADC'),
     ('sdio/sdio-sun252i.c', 'RT_USING_SDIO'),
     ('mbus/mbus-sun252i.c', 'BSP_USING_MBUS'),
+    ('sid/sid-sun252i.c', ''),
     ('audio/codec-sun252i.c', 'RT_USING_AUDIO'),
     ('audio/i2s-sun252i.c', 'RT_USING_AUDIO'),
     ('audio/owa-sun252i.c', 'RT_USING_AUDIO'),
@@ -37,7 +39,7 @@ for f, dep in drivers:
         src.append(f)
 
 # every driver directory holds its own headers
-CPPPATH = [cwd, os.path.join(cwd, 'include'), os.path.join(cwd, '..', 'dts', 'include'), os.path.join(cwd, 'mbus'), os.path.join(cwd, 'audio'), os.path.join(cwd, 'dma'),
+CPPPATH = [cwd, os.path.join(cwd, 'include'), os.path.join(cwd, '..', 'dts', 'include'), os.path.join(cwd, 'mbus'), os.path.join(cwd, 'sid'), os.path.join(cwd, 'spif'), os.path.join(cwd, 'audio'), os.path.join(cwd, 'dma'),
            os.path.join(cwd, '..', '..', '..', '..', 'components', 'drivers', 'pin')]
 for d in sorted({os.path.dirname(f) for f, _ in drivers}):
     CPPPATH.append(os.path.join(cwd, d))

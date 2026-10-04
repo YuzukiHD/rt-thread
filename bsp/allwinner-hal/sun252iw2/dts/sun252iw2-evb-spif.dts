@@ -1,0 +1,48 @@
+/*
+ * Copyright (c) 2006-2026, RT-Thread Development Team
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * The EVB with the SPI NOR flash (16 MiB, PC0..PC5) on the flash controller instead of spi0:
+ * the controller runs the flash at 100 MHz with a tuned sample point, keeps the point in the
+ * params sector and can map flash at 0x0e000000. The first 5 MiB, the sketch at 0x500000 and
+ * the data at 0xf00000 of the board flash are not ours; the test areas are in blank space.
+ */
+
+#include "sun252iw2-evb.dts"
+
+&pio {
+	spif_data_pins: spif-data-pins {
+		pinmux = <ALLWINNER_PINMUX(ALLWINNER_PIO_PC, 0, 4)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PC, 4, 4)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PC, 2, 4)>;
+		bias-disable;
+		drive-strength = <3>;
+	};
+
+	spif_control_pins: spif-control-pins {
+		pinmux = <ALLWINNER_PINMUX(ALLWINNER_PIO_PC, 1, 4)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PC, 3, 4)
+			  ALLWINNER_PINMUX(ALLWINNER_PIO_PC, 5, 4)>;
+		bias-pull-up;
+		drive-strength = <3>;
+	};
+};
+
+&spi0 {
+	status = "disabled";
+};
+
+&spif {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&spif_data_pins>, <&spif_control_pins>;
+	clock-frequency = <100000000>;
+	quad;
+	dtr;
+	clear-block-protect;
+	/* offsets in the flash: code of the Arduino core (data that is not constant), the sector of
+	 * the saved sample point */
+	tune-offset = <0x31000>;
+	params-offset = <0xfff000>;
+};

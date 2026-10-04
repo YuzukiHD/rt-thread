@@ -15,6 +15,7 @@
 #include <rtthread.h>
 #include <rtdevice.h>
 #include <rthw.h>
+#include <stdlib.h>
 
 #define DBG_TAG "ccu"
 #define DBG_LVL DBG_INFO
@@ -74,6 +75,7 @@ static const struct ccu_mod ccu_mods[] =
     { 0x0790, 0, 5, RT_FALSE, { SRC_PERI_2X } },                    /* panel backlight */
     { 0x0830, 2, 4, RT_FALSE, { SRC_HOSC, SRC_PERI_1X } },          /* SMHC0 */
     { 0x0940, 4, 0, RT_FALSE, { SRC_HOSC } },                       /* SPI0 */
+    { 0x0980, 2, 4, RT_FALSE, { SRC_HOSC, SRC_PERI_1X } },          /* SPIF */
     { 0x0944, 4, 0, RT_FALSE, { SRC_HOSC } },                       /* SPI1 (and the display bus interface) */
     { 0x0aa0, 0, 5, RT_FALSE, { SRC_VIDEO0_4X, SRC_PERI_2X } },     /* combo D-PHY */
     { 0x0b24, 0, 4, RT_FALSE, { SRC_HOSC, SRC_PERI_1X } },          /* MIPI DSI */
@@ -702,6 +704,199 @@ static const struct rt_clk_ops ccu_audio_ops =
     .set_rate = ccu_audio_set_rate,
 };
 
+/* ---- PLL_CPU: rate only ------------------------------------------------------------
+ * Output = HOSC * N / P / M0 / M1. Only N is changed: it is latched by the update bit while
+ * the spread spectrum mode is on, then the mode is switched off and latched again. The CPU
+ * keeps running from the PLL throughout; the output settles within the delay at the end. */
+#define PLL_CPU_REG         0x0000u
+#define PLL_CPU_SSC_REG     0x0200u
+#define PLL_CPU_M1_MASK     (0xfu << 0)
+#define PLL_CPU_N_MASK      (0xffu << 8)
+#define PLL_CPU_P_MASK      (0x7u << 16)
+#define PLL_CPU_M0_MASK     (0x3u << 20)
+#define PLL_CPU_UPDATE      RT_BIT(26)
+#define PLL_CPU_SSC_MODE    RT_BIT(31)
+#define PLL_CPU_N_MIN       12u
+#define PLL_CPU_N_MAX       125u
+/* highest rate accepted: tested, the PLL itself allows more */
+#define PLL_CPU_MAX_HZ      1008000000u
+
+static struct ccu *cpu_ccu;
+
+static rt_uint32_t cpu_pll_div(rt_uint32_t reg)
+{
+    return (((reg & PLL_CPU_P_MASK) >> 16) + 1u) * (((reg & PLL_CPU_M0_MASK) >> 20) + 1u) *
+           ((reg & PLL_CPU_M1_MASK) + 1u);
+}
+
+static rt_ubase_t ccu_cpu_recalc_rate(struct rt_clk_cell *cell, rt_ubase_t parent_rate)
+{
+    struct ccu *ccu = cell_to_clk(cell)->ccu;
+    rt_uint32_t reg = ccu_read(ccu, PLL_CPU_REG);
+
+    return HOSC_HZ / cpu_pll_div(reg) * ((reg & PLL_CPU_N_MASK) >> 8);
+}
+
+static rt_base_t ccu_cpu_round_rate(struct rt_clk_cell *cell, rt_ubase_t rate, rt_ubase_t *prate)
+{
+    struct ccu *ccu = cell_to_clk(cell)->ccu;
+    rt_uint32_t unit = HOSC_HZ / cpu_pll_div(ccu_read(ccu, PLL_CPU_REG));
+    rt_uint32_t n = (rate + unit / 2u) / unit;
+
+    if (rate > PLL_CPU_MAX_HZ || n < PLL_CPU_N_MIN || n > PLL_CPU_N_MAX)
+    {
+        return -RT_EINVAL;
+    }
+
+    return (rt_base_t)(n * unit);
+}
+
+static rt_err_t ccu_cpu_set_rate(struct rt_clk_cell *cell, rt_ubase_t rate, rt_ubase_t parent_rate)
+{
+    struct ccu *ccu = cell_to_clk(cell)->ccu;
+    rt_uint32_t unit = HOSC_HZ / cpu_pll_div(ccu_read(ccu, PLL_CPU_REG));
+    rt_uint32_t n = (rate + unit / 2u) / unit;
+    rt_ubase_t level;
+    rt_int32_t tries;
+
+    if (rate > PLL_CPU_MAX_HZ || n < PLL_CPU_N_MIN || n > PLL_CPU_N_MAX)
+    {
+        return -RT_EINVAL;
+    }
+
+    level = rt_spin_lock_irqsave(&ccu->lock);
+    HWREG32((rt_ubase_t)ccu->base + PLL_CPU_SSC_REG) |= PLL_CPU_SSC_MODE;
+    HWREG32((rt_ubase_t)ccu->base + PLL_CPU_REG) =
+        (HWREG32((rt_ubase_t)ccu->base + PLL_CPU_REG) & ~PLL_CPU_N_MASK) | (n << 8) | PLL_CPU_UPDATE;
+    for (tries = 1000000; tries && (HWREG32((rt_ubase_t)ccu->base + PLL_CPU_REG) & PLL_CPU_UPDATE); tries--)
+    {
+    }
+    HWREG32((rt_ubase_t)ccu->base + PLL_CPU_SSC_REG) &= ~PLL_CPU_SSC_MODE;
+    HWREG32((rt_ubase_t)ccu->base + PLL_CPU_REG) |= PLL_CPU_UPDATE;
+    for (tries = 1000000; tries && (HWREG32((rt_ubase_t)ccu->base + PLL_CPU_REG) & PLL_CPU_UPDATE); tries--)
+    {
+    }
+    rt_hw_us_delay(200);
+    rt_spin_unlock_irqrestore(&ccu->lock, level);
+
+    return tries ? RT_EOK : -RT_ETIMEOUT;
+}
+
+static const struct rt_clk_ops ccu_cpu_ops =
+{
+    .recalc_rate = ccu_cpu_recalc_rate,
+    .round_rate = ccu_cpu_round_rate,
+    .set_rate = ccu_cpu_set_rate,
+};
+
+/* A busy loop over a checksummed block of memory: a CPU that is too fast corrupts it */
+static rt_bool_t cpu_selftest(void)
+{
+    static rt_uint32_t blk[16 * 1024];
+    rt_uint32_t sum = 0, ref = 0;
+    rt_uint32_t i;
+    int round;
+
+    for (i = 0; i < sizeof(blk) / sizeof(blk[0]); i++)
+    {
+        blk[i] = i * 2654435761u;
+    }
+    for (round = 0; round < 50; round++)
+    {
+        sum = 0;
+        for (i = 0; i < sizeof(blk) / sizeof(blk[0]); i++)
+        {
+            sum = (sum << 1 | sum >> 31) ^ blk[i] ^ (sum * 3u);
+        }
+        if (round == 0)
+        {
+            ref = sum;
+        }
+        else if (sum != ref)
+        {
+            return RT_FALSE;
+        }
+    }
+
+    return RT_TRUE;
+}
+
+/* Current CPU clock in Hz (0 before the clock controller is probed) */
+rt_ubase_t sun252i_cpu_get_rate(void)
+{
+    rt_uint32_t reg;
+
+    if (!cpu_ccu)
+    {
+        return 0;
+    }
+    reg = ccu_read(cpu_ccu, PLL_CPU_REG);
+
+    return HOSC_HZ / cpu_pll_div(reg) * ((reg & PLL_CPU_N_MASK) >> 8);
+}
+
+/*
+ * Raise the CPU clock to rate in 72 MHz steps, each one followed by a memory self test; the
+ * voltage is not changed. On a failed test the previous rate is restored. Returns the rate
+ * the CPU runs at afterwards.
+ */
+rt_ubase_t sun252i_cpu_raise_rate(rt_ubase_t target)
+{
+    struct ccu_clk c = { .ccu = cpu_ccu };
+    rt_ubase_t rate = sun252i_cpu_get_rate();
+
+    if (!cpu_ccu)
+    {
+        return 0;
+    }
+    while (target != 0 && rate < target)
+    {
+        rt_ubase_t next = rate + 72000000u < target ? rate + 72000000u : target;
+
+        if (ccu_cpu_set_rate(&c.cell, next, 0) != RT_EOK)
+        {
+            rt_kprintf("cpu: %u MHz refused\n", (rt_uint32_t)(next / 1000000u));
+            break;
+        }
+        if (!cpu_selftest())
+        {
+            rt_kprintf("cpu: %u MHz BAD\n", (rt_uint32_t)(next / 1000000u));
+            ccu_cpu_set_rate(&c.cell, rate, 0);
+            rt_kprintf("cpu: back to %u MHz\n", (rt_uint32_t)(rate / 1000000u));
+            break;
+        }
+        rate = next;
+    }
+
+    return sun252i_cpu_get_rate();
+}
+
+static int cpu_freq(int argc, char **argv)
+{
+    if (argc > 1)
+    {
+        rt_ubase_t want = (rt_ubase_t)atoi(argv[1]) * 1000000u;
+
+        if (want < sun252i_cpu_get_rate())
+        {
+            struct ccu_clk c = { .ccu = cpu_ccu };
+
+            if (ccu_cpu_set_rate(&c.cell, want, 0) != RT_EOK)
+            {
+                rt_kprintf("cpu: %s MHz refused\n", argv[1]);
+            }
+        }
+        else
+        {
+            sun252i_cpu_raise_rate(want);
+        }
+    }
+    rt_kprintf("cpu: %u MHz\n", (rt_uint32_t)(sun252i_cpu_get_rate() / 1000000u));
+
+    return 0;
+}
+MSH_CMD_EXPORT(cpu_freq, show or set the CPU clock: cpu_freq [MHz]);
+
 /* ---- provider ------------------------------------------------------------------- */
 static struct rt_clk_cell *ccu_ofw_parse(struct rt_clk_node *np, struct rt_ofw_cell_args *args)
 {
@@ -732,7 +927,11 @@ static struct rt_clk_cell *ccu_ofw_parse(struct rt_clk_node *np, struct rt_ofw_c
     c->cell.ops = &ccu_gate_ops;
     c->cell.name = "ccu-clk";
 
-    if (c->reg == PLL_PERI_REG && (c->bit == 16 || c->bit == 17 || c->bit == 18))
+    if (c->reg == PLL_CPU_REG && c->bit == 0xff)
+    {
+        c->cell.ops = &ccu_cpu_ops;
+    }
+    else if (c->reg == PLL_PERI_REG && (c->bit == 16 || c->bit == 17 || c->bit == 18))
     {
         c->cell.ops = &ccu_pll_ops;
     }
@@ -830,6 +1029,7 @@ static rt_err_t ccu_probe(struct rt_platform_device *pdev)
         goto _fail;
     }
 
+    cpu_ccu = ccu;
     rt_spin_lock_init(&ccu->lock);
     rt_mutex_init(&ccu->pll_lock, "apll", RT_IPC_FLAG_PRIO);
     rt_list_init(&ccu->clks);

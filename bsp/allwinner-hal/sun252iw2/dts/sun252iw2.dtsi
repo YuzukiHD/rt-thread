@@ -429,6 +429,21 @@
 			status = "disabled";
 		};
 
+		/*
+		 * SPI NOR flash controller: the flash window maps at 0x0e000000. It shares PC0..PC5
+		 * with spi0 (other pin function), so a board enables one of them.
+		 */
+		spif: flash-controller@c000000 {
+			compatible = "allwinner,sun252i-spif";
+			reg = <0x0c000000 0x1000>, <0x0e000000 0x2000000>;
+			reg-names = "ctrl", "xip";
+			clocks = <&ccu CLK_BUS_SPIF>, <&ccu CLK_SPIF>;
+			clock-names = "bus", "mod";
+			resets = <&ccu RST_BUS_SPIF>;
+			clock-frequency = <100000000>;
+			status = "disabled";
+		};
+
 		spi1: spi@4026000 {
 			compatible = "allwinner,sun252i-spi";
 			reg = <0x04026000 0x1000>;

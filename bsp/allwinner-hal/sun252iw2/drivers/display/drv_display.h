@@ -28,6 +28,18 @@ struct lcd_yuv
 };
 
 int lcd_show_yuv(const struct lcd_yuv *img);
+
+/* an RGB565 (or 32 bit XRGB8888) picture on the scaling video plane, aspect kept, UI plane above it */
+struct lcd_rgb
+{
+    const void *data;
+    rt_uint16_t width, height;
+    rt_uint16_t stride;     /* bytes from one row to the next */
+    rt_bool_t xrgb8888;
+    rt_bool_t nonblock;     /* up at the next refresh, do not wait for it */
+};
+
+int lcd_show_rgb(const struct lcd_rgb *img);
 int lcd_hide_yuv(void);
 
 #endif

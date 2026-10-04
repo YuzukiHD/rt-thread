@@ -153,6 +153,60 @@ int lcd_show_yuv(const struct lcd_yuv *img)
     return display_submit_ex(&state, DISPLAY_SUBMIT_PARTIAL | (img->nonblock ? DISPLAY_SUBMIT_NONBLOCK : 0));
 }
 
+int lcd_show_rgb(const struct lcd_rgb *img)
+{
+    struct display_pipeline_state state;
+    struct display_plane_state *v;
+    static int video_plane = -2;
+    uint32_t dw, dh;
+
+    if (!lcd_fb)
+        return -RT_ENOSYS;
+    if (video_plane == -2)
+        video_plane = find_video_plane();
+    if (video_plane < 0)
+        return -RT_ENOSYS;
+
+    if ((uint64_t)lcd_w * img->height <= (uint64_t)lcd_h * img->width)
+    {
+        dw = lcd_w;
+        dh = (uint64_t)img->height * lcd_w / img->width;
+    }
+    else
+    {
+        dh = lcd_h;
+        dw = (uint64_t)img->width * lcd_h / img->height;
+    }
+    dw &= ~1U;
+    dh &= ~1U;
+
+    display_pipeline_state_init(&state);
+    state.plane_count = 2;
+    fb_plane(&state.planes[0], RT_TRUE, DISPLAY_BLEND_COVERAGE);
+    v = &state.planes[1];
+    memset(v, 0, sizeof(*v));
+    v->enable = true;
+    v->plane_id = video_plane;
+    v->alpha = 0xff;
+    v->blend_mode = DISPLAY_BLEND_NONE;
+    v->framebuffer.address = (uintptr_t)img->data;
+    v->framebuffer.plane_address[0] = (uintptr_t)img->data;
+    v->framebuffer.plane_stride[0] = img->stride;
+    v->framebuffer.plane_count = 1;
+    v->framebuffer.format = img->xrgb8888 ? DISPLAY_FORMAT_XRGB8888 : DISPLAY_FORMAT_RGB565;
+    v->framebuffer.width = img->width;
+    v->framebuffer.height = img->height;
+    v->framebuffer.stride = img->stride;
+    v->source.width = img->width;
+    v->source.height = img->height;
+    v->destination.x = (lcd_w - dw) / 2;
+    v->destination.y = (lcd_h - dh) / 2;
+    v->destination.width = dw;
+    v->destination.height = dh;
+
+    return display_submit_ex(&state, DISPLAY_SUBMIT_PARTIAL | (img->nonblock ? DISPLAY_SUBMIT_NONBLOCK : 0));
+}
+
 int lcd_hide_yuv(void)
 {
     struct display_pipeline_state state;
